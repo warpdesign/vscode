@@ -21,10 +21,10 @@ import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { ConfigurationTarget } from 'vs/workbench/services/configuration/common/configurationEditing';
 import { IMatch, or, matchesContiguousSubString, matchesPrefix, matchesCamelCase, matchesWords } from 'vs/base/common/filters';
 import { ITextEditorModel, ITextModelService } from 'vs/editor/common/services/resolverService';
-import { IRange } from 'vs/editor/common/core/range';
-import { ITextFileService, StateChange } from 'vs/workbench/services/textfile/common/textfiles';
-import { TPromise } from 'vs/base/common/winjs.base';
-import { Queue } from 'vs/base/common/async';
+import { IRange, Range } from 'vs/editor/common/core/range';
+import { ITextFileService, StateChange } from "vs/workbench/services/textfile/common/textfiles";
+import { TPromise } from "vs/base/common/winjs.base";
+import { Queue } from "vs/base/common/async";
 import { IFileService } from 'vs/platform/files/common/files';
 
 class SettingMatches {
@@ -155,7 +155,7 @@ export abstract class AbstractSettingsModel extends EditorModel {
 		return this.settingsGroups.map(group => '@' + group.id);
 	}
 
-	protected doFilterSettings(filter: string, allGroups: ISettingsGroup[]): IFilterResult {
+	protected doFilterSettings(filter: string, suggestions: Set<string>, allGroups: ISettingsGroup[]): IFilterResult {
 		if (!filter) {
 			return {
 				filteredGroups: allGroups,
@@ -175,18 +175,20 @@ export abstract class AbstractSettingsModel extends EditorModel {
 
 		const matches: IRange[] = [];
 		const filteredGroups: ISettingsGroup[] = [];
-		const regex = strings.createRegExp(filter, false, { global: true });
 		for (const group of allGroups) {
-			const groupMatched = regex.test(group.title);
 			const sections: ISettingsSection[] = [];
 			for (const section of group.sections) {
 				const settings: ISetting[] = [];
 				for (const setting of section.settings) {
-					const settingMatches = new SettingMatches(filter, setting, (filter, setting) => this.findValueMatches(filter, setting)).matches;
-					if (groupMatched || settingMatches.length > 0) {
+					if (suggestions.has(setting.key)) {
+						const settingMatches = new SettingMatches(filter, setting, (filter, setting) => this.findValueMatches(filter, setting)).matches;
 						settings.push(setting);
+						if (settingMatches.length) {
+							matches.push(...settingMatches);
+						} else {
+							matches.push(new Range(setting.keyRange.startLineNumber, setting.keyRange.startColumn, setting.keyRange.endLineNumber, setting.keyRange.startColumn));
+						}
 					}
-					matches.push(...settingMatches);
 				}
 				if (settings.length) {
 					sections.push({
@@ -207,6 +209,39 @@ export abstract class AbstractSettingsModel extends EditorModel {
 			}
 		}
 		return { filteredGroups, matches, allGroups };
+
+		// const regex = strings.createRegExp(filter, false, { global: true });
+		// for (const group of allGroups) {
+		// 	const groupMatched = regex.test(group.title);
+		// 	const sections: ISettingsSection[] = [];
+		// 	for (const section of group.sections) {
+		// 		const settings: ISetting[] = [];
+		// 		for (const setting of section.settings) {
+		// 			const settingMatches = new SettingMatches(filter, setting, (filter, setting) => this.findValueMatches(filter, setting)).matches;
+		// 			if (groupMatched || settingMatches.length > 0) {
+		// 				settings.push(setting);
+		// 			}
+		// 			matches.push(...settingMatches);
+		// 		}
+		// 		if (settings.length) {
+		// 			sections.push({
+		// 				title: section.title,
+		// 				settings,
+		// 				titleRange: section.titleRange
+		// 			});
+		// 		}
+		// 	}
+		// 	if (sections.length) {
+		// 		filteredGroups.push({
+		// 			id: group.id,
+		// 			title: group.title,
+		// 			titleRange: group.titleRange,
+		// 			sections,
+		// 			range: group.range
+		// 		});
+		// 	}
+		// }
+		// return { filteredGroups, matches, allGroups };
 	}
 
 	private filterByGroupTerm(filter: string): ISettingsGroup {
@@ -270,8 +305,8 @@ export class SettingsEditorModel extends AbstractSettingsModel implements ISetti
 		return this.settingsModel.getValue();
 	}
 
-	public filterSettings(filter: string): IFilterResult {
-		return this.doFilterSettings(filter, this.settingsGroups);
+	public filterSettings(filter: string, suggestions: Set<string>): IFilterResult {
+		return this.doFilterSettings(filter, suggestions, this.settingsGroups);
 	}
 
 	public save(): TPromise<any> {
@@ -624,8 +659,8 @@ export class DefaultSettingsEditorModel extends AbstractSettingsModel implements
 		return this.settingsGroups[0];
 	}
 
-	public filterSettings(filter: string): IFilterResult {
-		return this.doFilterSettings(filter, this.settingsGroups);
+	public filterSettings(filter: string, suggestions: Set<string>): IFilterResult {
+		return this.doFilterSettings(filter, suggestions, this.settingsGroups);
 	}
 
 	public getPreference(key: string): ISetting {

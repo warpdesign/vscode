@@ -56,7 +56,7 @@ export interface IPreferencesEditorModel<T> {
 export interface ISettingsEditorModel extends IPreferencesEditorModel<ISetting> {
 	settingsGroups: ISettingsGroup[];
 	groupsTerms: string[];
-	filterSettings(filter: string): IFilterResult;
+	filterSettings(filter: string, suggestions: Set<string>): IFilterResult;
 }
 
 export interface IKeybindingsEditorModel<T> extends IPreferencesEditorModel<T> {
