@@ -12,7 +12,7 @@ import URI from 'vs/base/common/uri';
 import errors = require('vs/base/common/errors');
 import { IIconLabelOptions } from 'vs/base/browser/ui/iconLabel/iconLabel';
 import { IAutoFocus, Mode, IEntryRunContext, IQuickNavigateConfiguration, IModel } from 'vs/base/parts/quickopen/common/quickOpen';
-import { QuickOpenModel, QuickOpenEntry, QuickOpenEntryGroup, ResourceAccessor } from 'vs/base/parts/quickopen/browser/quickOpenModel';
+import { QuickOpenModel, QuickOpenEntry, QuickOpenEntryGroup, FileAccessor } from 'vs/base/parts/quickopen/browser/quickOpenModel';
 import { IModeService } from 'vs/editor/common/services/modeService';
 import { getIconClasses } from 'vs/workbench/browser/labels';
 import { IModelService } from 'vs/editor/common/services/modelService';
@@ -137,7 +137,7 @@ export abstract class BaseEditorPicker extends QuickOpenHandler {
 					return stacks.positionOfGroup(e1.group) - stacks.positionOfGroup(e2.group);
 				}
 
-				return compareResourcesByScore(e1, e2, ResourceAccessor, searchValue, normalizedSearchValueLowercase, this.scorerCache);
+				return compareResourcesByScore(e1, e2, FileAccessor, searchValue, normalizedSearchValueLowercase, this.scorerCache); //
 			});
 		}
 

@@ -23,7 +23,7 @@ import { TextSearchWorkerProvider } from 'vs/workbench/services/search/node/text
 import { IRawSearchService, IRawSearch, IRawFileMatch, ISerializedFileMatch, ISerializedSearchProgressItem, ISerializedSearchComplete, ISearchEngine, IFileSearchProgressItem, ITelemetryEvent } from './search';
 import { ICachedSearchStats, IProgress } from 'vs/platform/search/common/search';
 import { fuzzyContains } from 'vs/base/common/strings';
-import { compareResourcesByScore } from 'vs/base/common/scorer';
+import { compareFilesByScore, Score } from 'vs/base/common/scorer';
 
 export class SearchService implements IRawSearchService {
 
@@ -246,7 +246,7 @@ export class SearchService implements IRawSearchService {
 	private sortResults(config: IRawSearch, results: IRawFileMatch[], scorerCache: ScorerCache): IRawFileMatch[] {
 		const filePattern = config.filePattern;
 		const normalizedSearchValue = strings.stripWildcards(filePattern).toLowerCase();
-		const compare = (elementA: IRawFileMatch, elementB: IRawFileMatch) => compareResourcesByScore(elementA, elementB, FileMatchResourceAccessor, filePattern, normalizedSearchValue, scorerCache);
+		const compare = (elementA: IRawFileMatch, elementB: IRawFileMatch) => compareFilesByScore(elementA, elementB, FileMatchAccessor, normalizedSearchValue, scorerCache);
 		return arrays.top(results, compare, config.maxResults);
 	}
 
@@ -406,16 +406,16 @@ class Cache {
 }
 
 interface ScorerCache {
-	[key: string]: number;
+	[key: string]: Score;
 }
 
-class FileMatchResourceAccessor {
+class FileMatchAccessor {
 
-	public static getResourceLabel(match: IRawFileMatch): string {
+	public static getBasename(match: IRawFileMatch): string {
 		return match.basename;
 	}
 
-	public static getResourcePath(match: IRawFileMatch): string {
+	public static getPath(match: IRawFileMatch): string {
 		return match.relativePath;
 	}
 }

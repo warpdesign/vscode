@@ -14,7 +14,7 @@ import types = require('vs/base/common/types');
 import { isWindows } from 'vs/base/common/platform';
 import strings = require('vs/base/common/strings');
 import { IAutoFocus } from 'vs/base/parts/quickopen/common/quickOpen';
-import { QuickOpenEntry, QuickOpenModel, ResourceAccessor } from 'vs/base/parts/quickopen/browser/quickOpenModel';
+import { QuickOpenEntry, QuickOpenModel, FileAccessor } from 'vs/base/parts/quickopen/browser/quickOpenModel';
 import { QuickOpenHandler } from 'vs/workbench/browser/quickopen';
 import { FileEntry, OpenFileHandler, FileQuickOpenModel } from 'vs/workbench/parts/search/browser/openFileHandler';
 import * as openSymbolHandler from 'vs/workbench/parts/search/browser/openSymbolHandler';
@@ -25,7 +25,7 @@ import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { IWorkbenchSearchConfiguration } from 'vs/workbench/parts/search/common/search';
 import { IRange } from 'vs/editor/common/core/range';
-import { compareResourcesByScore } from 'vs/base/common/scorer';
+import { compareFilesByScore, Score } from 'vs/base/common/scorer';
 
 export import OpenSymbolHandler = openSymbolHandler.OpenSymbolHandler; // OpenSymbolHandler is used from an extension and must be in the main bundle file so it can load
 
@@ -125,7 +125,7 @@ export class OpenAnythingHandler extends QuickOpenHandler {
 	private searchDelayer: ThrottledDelayer<QuickOpenModel>;
 	private pendingSearch: TPromise<QuickOpenModel>;
 	private isClosed: boolean;
-	private scorerCache: { [key: string]: number };
+	private scorerCache: { [key: string]: Score };
 	private includeSymbols: boolean;
 
 	constructor(
@@ -216,7 +216,9 @@ export class OpenAnythingHandler extends QuickOpenHandler {
 				// Sort
 				const unsortedResultTime = Date.now();
 				const normalizedSearchValue = strings.stripWildcards(searchValue).toLowerCase();
-				const compare = (elementA: QuickOpenEntry, elementB: QuickOpenEntry) => compareResourcesByScore(elementA, elementB, ResourceAccessor, searchValue, normalizedSearchValue, this.scorerCache);
+
+				const compare = (elementA: QuickOpenEntry, elementB: QuickOpenEntry) => compareFilesByScore(elementA, elementB, FileAccessor, normalizedSearchValue, this.scorerCache);
+
 				const viewResults = arrays.top(mergedResults, compare, OpenAnythingHandler.MAX_DISPLAYED_RESULTS);
 				const sortedResultTime = Date.now();
 
@@ -224,6 +226,8 @@ export class OpenAnythingHandler extends QuickOpenHandler {
 				viewResults.forEach(entry => {
 					if (entry instanceof FileEntry) {
 						entry.setRange(searchWithRange ? searchWithRange.range : null);
+
+						// const score = scoreFile(elementA, FileAccessor, normalizedSearchValue, this.scorerCache);
 
 						const { labelHighlights, descriptionHighlights } = QuickOpenEntry.highlight(entry, searchValue, true /* fuzzy highlight */);
 						entry.setHighlights(labelHighlights, descriptionHighlights);
