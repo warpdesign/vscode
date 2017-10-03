@@ -53,10 +53,14 @@ export interface IPreferencesEditorModel<T> {
 	dispose(): void;
 }
 
+export type IGroupFilter = (group: ISettingsGroup) => IRange[];
+export type ISettingFilter = (setting: ISetting) => IRange[];
+
 export interface ISettingsEditorModel extends IPreferencesEditorModel<ISetting> {
 	settingsGroups: ISettingsGroup[];
 	groupsTerms: string[];
-	filterSettings(filter: string, suggestions: Set<string>): IFilterResult;
+	filterSettings(filter: string, groupFilter: IGroupFilter, settingFilter: ISettingFilter): IFilterResult;
+	findValueMatches(filter: string, setting: ISetting): IRange[];
 }
 
 export interface IKeybindingsEditorModel<T> extends IPreferencesEditorModel<T> {

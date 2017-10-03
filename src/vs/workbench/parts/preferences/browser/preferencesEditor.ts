@@ -29,6 +29,7 @@ import { SettingsEditorModel, DefaultSettingsEditorModel } from 'vs/workbench/pa
 import { editorContribution } from 'vs/editor/browser/editorBrowserExtensions';
 import { ICodeEditor, IEditorContributionCtor } from 'vs/editor/browser/editorBrowser';
 import { SearchWidget, SettingsTargetsWidget } from 'vs/workbench/parts/preferences/browser/preferencesWidgets';
+import { RemoteSearchProvider } from 'vs/workbench/parts/preferences/browser/preferencesSearch';
 import { ContextKeyExpr, IContextKeyService, IContextKey } from 'vs/platform/contextkey/common/contextkey';
 import { Command } from 'vs/editor/common/editorCommonExtensions';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
@@ -56,9 +57,9 @@ import { IEditorOptions } from 'vs/editor/common/config/editorOptions';
 import { KeybindingsRegistry } from 'vs/platform/keybinding/common/keybindingsRegistry';
 import { attachStylerCallback } from 'vs/platform/theme/common/styler';
 import { scrollbarShadow } from 'vs/platform/theme/common/colorRegistry';
-import { IWorkspaceContextService } from "vs/platform/workspace/common/workspace";
-import Event, { Emitter, debounceEvent } from "vs/base/common/event";
-import { Registry } from "vs/platform/registry/common/platform";
+import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
+import Event, { Emitter, debounceEvent } from 'vs/base/common/event';
+import { Registry } from 'vs/platform/registry/common/platform';
 
 export class PreferencesEditorInput extends SideBySideEditorInput {
 	public static ID: string = 'workbench.editorinputs.preferencesEditorInput';
@@ -146,7 +147,6 @@ export class PreferencesEditor extends BaseEditor {
 			focusKey: this.focusSettingsContextKey
 		}));
 		this._register(this.searchWidget.onDidChange(value => this.onInput.fire()));
-		// this._register(this.searchWidget.onNavigate(shift => this.preferencesRenderers.focusNextPreference(!shift)));
 		this._register(this.searchWidget.onFocus(() => this.lastFocusedWidget = this.searchWidget));
 		this.lastFocusedWidget = this.searchWidget;
 
@@ -414,10 +414,13 @@ class PreferencesRenderers extends Disposable {
 		this._editablePreferencesRenderer = editableSettingsRenderer;
 	}
 
-	public filterPreferences(filter: string): Promise<number> {
-		return this.getSettingsSuggestions(filter).then(suggestions => {
-			const defaultPreferencesFilterResult = this._filterPreferences(filter, suggestions, this._defaultPreferencesRenderer);
-			const editablePreferencesFilterResult = this._filterPreferences(filter, suggestions, this._editablePreferencesRenderer);
+	public filterPreferences(filter: string): TPromise<number> {
+		const searchProvider = new RemoteSearchProvider(filter);
+		const filterPromises = TPromise.join([this._filterPreferences(filter, searchProvider, this._defaultPreferencesRenderer),
+		this._filterPreferences(filter, searchProvider, this._editablePreferencesRenderer)]);
+		return filterPromises.then(filterResults => {
+			const defaultPreferencesFilterResult = filterResults[0];
+			const editablePreferencesFilterResult = filterResults[1];
 
 			const defaultPreferencesFilteredGroups = defaultPreferencesFilterResult ? defaultPreferencesFilterResult.filteredGroups : this._getAllPreferences(this._defaultPreferencesRenderer);
 			const editablePreferencesFilteredGroups = editablePreferencesFilterResult ? editablePreferencesFilterResult.filteredGroups : this._getAllPreferences(this._editablePreferencesRenderer);
@@ -425,28 +428,6 @@ class PreferencesRenderers extends Disposable {
 			this._settingsNavigator = new SettingsNavigator(filter ? consolidatedSettings : []);
 
 			return consolidatedSettings.length;
-		});
-	}
-
-	private getSettingsSuggestions(filter: string): Promise<Set<string>> {
-		return fetch(`https://vscodesearch.search.windows.net/indexes/vscodeindex/docs?api-version=2015-02-28-Preview&search=${encodeURIComponent(filter)}~&querytype=full`, {
-			headers: {
-				'User-Agent': 'request',
-				'Content-Type': 'application/json; charset=utf-8',
-				'api-key': '901B3A7A06FD4F1A1D6345F5DF164959'
-			}
-		})
-		.then(r => r.json())
-		.then(result => {
-			const suggestions = (result.value || [])
-				.filter(r => r['@search.score'] >= 0.3)
-				.map(r => r.Setting)
-				.map(s => s.replace(/^"/, ''))
-				.map(s => s.replace(/"$/, ''));
-
-			const suggSet = new Set<string>();
-			suggestions.forEach(s => suggSet.add(s)); // Boo IE11
-			return suggSet;
 		});
 	}
 
@@ -460,13 +441,15 @@ class PreferencesRenderers extends Disposable {
 		return preferencesRenderer ? (<ISettingsEditorModel>preferencesRenderer.preferencesModel).settingsGroups : [];
 	}
 
-	private _filterPreferences(filter: string, suggestions: Set<string>, preferencesRenderer: IPreferencesRenderer<ISetting>): IFilterResult {
-		let filterResult = null;
+	private _filterPreferences(filter: string, searchProvider: RemoteSearchProvider, preferencesRenderer: IPreferencesRenderer<ISetting>): TPromise<IFilterResult> {
 		if (preferencesRenderer) {
-			filterResult = filter ? (<ISettingsEditorModel>preferencesRenderer.preferencesModel).filterSettings(filter, suggestions) : null;
-			preferencesRenderer.filterPreferences(filterResult);
+			return searchProvider.filterPreferences(<ISettingsEditorModel>preferencesRenderer.preferencesModel).then(filterResult => {
+				preferencesRenderer.filterPreferences(filterResult);
+				return filterResult;
+			});
 		}
-		return filterResult;
+
+		return TPromise.wrap(null);
 	}
 
 	private _focusPreference(preference: ISetting, preferencesRenderer: IPreferencesRenderer<ISetting>): void {
