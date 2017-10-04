@@ -170,13 +170,13 @@ export class PreferencesEditor extends BaseEditor {
 
 	public focusNextResult(): void {
 		if (this.preferencesRenderers) {
-			this.preferencesRenderers.focusNextPreference(true);
+			// this.preferencesRenderers.focusNextPreference(true);
 		}
 	}
 
 	public focusPreviousResult(): void {
 		if (this.preferencesRenderers) {
-			this.preferencesRenderers.focusNextPreference(false);
+			// this.preferencesRenderers.focusNextPreference(false);
 		}
 	}
 

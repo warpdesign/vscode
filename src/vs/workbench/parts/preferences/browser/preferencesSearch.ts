@@ -184,7 +184,7 @@ function getSettingsFromBing(filter: string): TPromise<Set<string>> {
 		.then(r => r.json())
 		.then(result => {
 			const suggestions = (result.value || [])
-				.filter(r => r['@search.score'] >= 0.3)
+				.filter(r => r['@search.score'] >= 0.2)
 				.map(r => r.Setting)
 				.map(s => s.replace(/^"/, ''))
 				.map(s => s.replace(/"$/, ''));

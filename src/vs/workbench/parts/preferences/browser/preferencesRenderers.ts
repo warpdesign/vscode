@@ -6,6 +6,8 @@
 import { TPromise } from 'vs/base/common/winjs.base';
 import * as nls from 'vs/nls';
 import { Delayer } from 'vs/base/common/async';
+import * as strings from 'vs/base/common/strings';
+import URI from 'vs/base/common/uri';
 import { Disposable, IDisposable, dispose } from 'vs/base/common/lifecycle';
 import { IAction } from 'vs/base/common/actions';
 import { IJSONSchema } from 'vs/base/common/jsonSchema';
@@ -30,9 +32,11 @@ import { IWorkspaceConfigurationService } from 'vs/workbench/services/configurat
 import { IMessageService, Severity } from 'vs/platform/message/common/message';
 import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { ICursorPositionChangedEvent } from 'vs/editor/common/controller/cursorEvents';
+import { Model } from 'vs/editor/common/model/model';
 import { ModelDecorationOptions } from 'vs/editor/common/model/textModelWithDecorations';
 import { IWorkspaceContextService, WorkbenchState } from 'vs/platform/workspace/common/workspace';
 import { MarkdownString } from 'vs/base/common/htmlContent';
+import { IModeService } from 'vs/editor/common/services/modeService';
 
 export interface IPreferencesRenderer<T> extends IDisposable {
 	preferencesModel: IPreferencesEditorModel<T>;
@@ -246,7 +250,8 @@ export class DefaultSettingsRenderer extends Disposable implements IPreferencesR
 	private settingsGroupTitleRenderer: SettingsGroupTitleRenderer;
 	private filteredMatchesRenderer: FilteredMatchesRenderer;
 	private hiddenAreasRenderer: HiddenAreasRenderer;
-	private editSettingActionRenderer: EditSettingRenderer;
+	// private editSettingActionRenderer: EditSettingRenderer;
+	private mostRelevantMatchesRenderer: MostRelevantMatchesRenderer;
 
 	private _onUpdatePreference: Emitter<{ key: string, value: any, source: ISetting }> = new Emitter<{ key: string, value: any, source: ISetting }>();
 	public readonly onUpdatePreference: Event<{ key: string, value: any, source: ISetting }> = this._onUpdatePreference.event;
@@ -262,19 +267,26 @@ export class DefaultSettingsRenderer extends Disposable implements IPreferencesR
 	constructor(protected editor: ICodeEditor, public readonly preferencesModel: DefaultSettingsEditorModel,
 		@IPreferencesService protected preferencesService: IPreferencesService,
 		@IWorkbenchEditorService private editorService: IWorkbenchEditorService,
-		@IInstantiationService protected instantiationService: IInstantiationService
+		@IInstantiationService protected instantiationService: IInstantiationService,
+		@IModeService modeService: IModeService,
 	) {
 		super();
 		this.settingHighlighter = this._register(instantiationService.createInstance(SettingHighlighter, editor, this._onFocusPreference, this._onClearFocusPreference));
 		this.settingsHeaderRenderer = this._register(instantiationService.createInstance(DefaultSettingsHeaderRenderer, editor, preferencesModel.configurationScope));
 		this.settingsGroupTitleRenderer = this._register(instantiationService.createInstance(SettingsGroupTitleRenderer, editor));
 		this.filteredMatchesRenderer = this._register(instantiationService.createInstance(FilteredMatchesRenderer, editor));
-		this.editSettingActionRenderer = this._register(instantiationService.createInstance(EditSettingRenderer, editor, preferencesModel, this.settingHighlighter));
-		this._register(this.editSettingActionRenderer.onUpdateSetting(e => this._onUpdatePreference.fire(e)));
-		const paranthesisHidingRenderer = this._register(instantiationService.createInstance(StaticContentHidingRenderer, editor, preferencesModel.settingsGroups));
-		this.hiddenAreasRenderer = this._register(instantiationService.createInstance(HiddenAreasRenderer, editor, [this.settingsGroupTitleRenderer, this.filteredMatchesRenderer, paranthesisHidingRenderer]));
+		// this.editSettingActionRenderer = this._register(instantiationService.createInstance(EditSettingRenderer, editor, preferencesModel, this.settingHighlighter));
+		this.mostRelevantMatchesRenderer = this._register(instantiationService.createInstance(MostRelevantMatchesRenderer, editor, this.editor.getModel()));
+
+		// this._register(this.editSettingActionRenderer.onUpdateSetting(e => this._onUpdatePreference.fire(e)));
+		const parenthesisHidingRenderer = this._register(instantiationService.createInstance(StaticContentHidingRenderer, editor, preferencesModel.settingsGroups));
+
+		const hiddenAreasProviders = [parenthesisHidingRenderer];
+		this.hiddenAreasRenderer = this._register(instantiationService.createInstance(HiddenAreasRenderer, editor, hiddenAreasProviders));
 
 		this._register(this.settingsGroupTitleRenderer.onHiddenAreasChanged(() => this.hiddenAreasRenderer.render()));
+
+		this.editor.setModel(Model.createFromString('[\n{\n}\n]\n', undefined, modeService.getMode('json').getLanguageIdentifier(), URI.parse('vscode://defaultsettings/settings2.json')));
 	}
 
 	public get associatedPreferencesModel(): IPreferencesEditorModel<ISetting> {
@@ -283,34 +295,38 @@ export class DefaultSettingsRenderer extends Disposable implements IPreferencesR
 
 	public set associatedPreferencesModel(associatedPreferencesModel: IPreferencesEditorModel<ISetting>) {
 		this._associatedPreferencesModel = associatedPreferencesModel;
-		this.editSettingActionRenderer.associatedPreferencesModel = associatedPreferencesModel;
+		// this.editSettingActionRenderer.associatedPreferencesModel = associatedPreferencesModel;
 	}
 
 	public render() {
-		this.settingsGroupTitleRenderer.render(this.preferencesModel.settingsGroups);
-		this.editSettingActionRenderer.render(this.preferencesModel.settingsGroups, this._associatedPreferencesModel);
+		// this.settingsGroupTitleRenderer.render(this.preferencesModel.settingsGroups);
+		// this.editSettingActionRenderer.render(this.preferencesModel.settingsGroups, this._associatedPreferencesModel);
 		this.hiddenAreasRenderer.render();
-		this.settingHighlighter.clear(true);
-		this.settingsGroupTitleRenderer.showGroup(1);
-		this.hiddenAreasRenderer.render();
+		// this.settingHighlighter.clear(true);
+		// this.settingsGroupTitleRenderer.showGroup(1);
+		// this.hiddenAreasRenderer.render();
 	}
 
 	public filterPreferences(filterResult: IFilterResult): void {
 		this.filterResult = filterResult;
-		if (!filterResult) {
-			this.settingHighlighter.clear(true);
-			this.filteredMatchesRenderer.render(null);
-			this.settingsHeaderRenderer.render(this.preferencesModel.settingsGroups);
-			this.settingsGroupTitleRenderer.render(this.preferencesModel.settingsGroups);
-			this.settingsGroupTitleRenderer.showGroup(1);
-			this.editSettingActionRenderer.render(this.preferencesModel.settingsGroups, this._associatedPreferencesModel);
-		} else {
-			this.filteredMatchesRenderer.render(filterResult);
-			this.settingsHeaderRenderer.render(filterResult.filteredGroups);
-			this.settingsGroupTitleRenderer.render(filterResult.filteredGroups);
-			this.settingHighlighter.clear(true);
-			this.editSettingActionRenderer.render(filterResult.filteredGroups, this._associatedPreferencesModel);
-		}
+		this.mostRelevantMatchesRenderer.render(filterResult);
+		// if (!filterResult) {
+		// 	// TODO Never hit...
+		// 	this.settingHighlighter.clear(true);
+		// 	this.filteredMatchesRenderer.render(null);
+		// 	this.mostRelevantMatchesRenderer.render(null);
+		// 	this.settingsHeaderRenderer.render(this.preferencesModel.settingsGroups);
+		// 	this.settingsGroupTitleRenderer.render(this.preferencesModel.settingsGroups);
+		// 	this.settingsGroupTitleRenderer.showGroup(1);
+		// 	this.editSettingActionRenderer.render(this.preferencesModel.settingsGroups, this._associatedPreferencesModel);
+		// } else {
+		// 	this.filteredMatchesRenderer.render(filterResult);
+		// 	this.mostRelevantMatchesRenderer.render(filterResult);
+		// 	this.settingsHeaderRenderer.render(filterResult.filteredGroups);
+		// 	this.settingsGroupTitleRenderer.render(filterResult.filteredGroups);
+		// 	this.settingHighlighter.clear(true);
+		// 	this.editSettingActionRenderer.render(filterResult.filteredGroups, this._associatedPreferencesModel);
+		// }
 		this.hiddenAreasRenderer.render();
 	}
 
@@ -383,12 +399,6 @@ export class StaticContentHidingRenderer extends Disposable implements HiddenAre
 				startColumn: model.getLineMinColumn(1),
 				endLineNumber: 2,
 				endColumn: model.getLineMaxColumn(2)
-			},
-			{
-				startLineNumber: this.settingsGroups[0].range.endLineNumber + 1,
-				startColumn: model.getLineMinColumn(this.settingsGroups[0].range.endLineNumber + 1),
-				endLineNumber: this.settingsGroups[0].range.endLineNumber + 4,
-				endColumn: model.getLineMaxColumn(this.settingsGroups[0].range.endLineNumber + 4)
 			},
 			{
 				startLineNumber: model.getLineCount() - 1,
@@ -528,6 +538,87 @@ export class HiddenAreasRenderer extends Disposable {
 	public dispose() {
 		this.editor.setHiddenAreas([]);
 		super.dispose();
+	}
+}
+
+export class MostRelevantMatchesRenderer extends Disposable implements HiddenAreasProvider {
+	public hiddenAreas: IRange[] = [];
+	private startLine: number;
+
+	constructor(private editor: ICodeEditor,
+		private originalModel: editorCommon.IModel
+	) {
+		super();
+		this.startLine = this.editor.getModel().getLineCount() - 1;
+	}
+
+	public render(result: IFilterResult): void {
+		if (result.matches.length) {
+			this.editor.updateOptions({ readOnly: false });
+
+			const settingsValue = this.computeVisibleRanges(result.filteredGroups, result.allGroups, this.originalModel).map(visibleRange => {
+				const value = this.originalModel.getValueInRange(visibleRange);
+				return strings.endsWith(value, ',') ? value : value + ',';
+			}).join('\n');
+			const newValue = '[\n{\n' + settingsValue + '\n}\n]';
+			this.editor.setValue(newValue);
+
+			this.editor.updateOptions({ readOnly: true });
+		} else {
+			this.editor.updateOptions({ readOnly: false });
+			this.editor.getModel().setValue('');
+			this.editor.updateOptions({ readOnly: true });
+		}
+	}
+
+	private computeVisibleRanges(filteredGroups: ISettingsGroup[], allSettingsGroups: ISettingsGroup[], model: editorCommon.IModel): IRange[] {
+		const matchingRanges: IRange[] = [];
+		for (const group of allSettingsGroups) {
+			const filteredGroup = filteredGroups.filter(g => g.title === group.title)[0];
+			if (filteredGroup) {
+				for (const section of group.sections) {
+					// if (section.titleRange) {
+					// 	if (this.containsLine(section.titleRange.startLineNumber, filteredGroup)) {
+					// 		matchingRanges.push(this.createCompleteRange(section.titleRange, model));
+					// 	}
+					// }
+					for (const setting of section.settings) {
+						if (this.containsLine(setting.range.startLineNumber, filteredGroup)) {
+							matchingRanges.push(this.createCompleteRange(setting.range, model));
+						}
+					}
+				}
+			}
+		}
+		return matchingRanges;
+	}
+
+	private containsLine(lineNumber: number, settingsGroup: ISettingsGroup): boolean {
+		if (settingsGroup.titleRange && lineNumber >= settingsGroup.titleRange.startLineNumber && lineNumber <= settingsGroup.titleRange.endLineNumber) {
+			return true;
+		}
+
+		for (const section of settingsGroup.sections) {
+			if (section.titleRange && lineNumber >= section.titleRange.startLineNumber && lineNumber <= section.titleRange.endLineNumber) {
+				return true;
+			}
+
+			for (const setting of section.settings) {
+				if (lineNumber >= setting.range.startLineNumber && lineNumber <= setting.range.endLineNumber) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	private createCompleteRange(range: IRange, model: editorCommon.IModel): IRange {
+		return {
+			startLineNumber: range.startLineNumber,
+			startColumn: model.getLineMinColumn(range.startLineNumber),
+			endLineNumber: range.endLineNumber,
+			endColumn: model.getLineMaxColumn(range.endLineNumber)
+		};
 	}
 }
 
