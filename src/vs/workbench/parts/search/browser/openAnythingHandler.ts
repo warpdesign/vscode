@@ -218,7 +218,7 @@ export class OpenAnythingHandler extends QuickOpenHandler {
 				// Sort
 				const unsortedResultTime = Date.now();
 				const normalizedSearchValue = strings.stripWildcards(searchValue);
-				const compare = (elementA: QuickOpenEntry, elementB: QuickOpenEntry) => compareItemsByScore(elementA, elementB, normalizedSearchValue, QuickOpenItemAccessor, this.scorerCache);
+				const compare = (elementA: QuickOpenEntry, elementB: QuickOpenEntry) => compareItemsByScore(elementA, elementB, normalizedSearchValue, true, QuickOpenItemAccessor, this.scorerCache);
 				const viewResults = arrays.top(mergedResults, compare, OpenAnythingHandler.MAX_DISPLAYED_RESULTS);
 				const sortedResultTime = Date.now();
 
@@ -227,7 +227,7 @@ export class OpenAnythingHandler extends QuickOpenHandler {
 					if (entry instanceof FileEntry) {
 						entry.setRange(searchWithRange ? searchWithRange.range : null);
 
-						const itemScore = scoreItem(entry, normalizedSearchValue, QuickOpenItemAccessor, this.scorerCache);
+						const itemScore = scoreItem(entry, normalizedSearchValue, true, QuickOpenItemAccessor, this.scorerCache);
 						entry.setHighlights(itemScore.labelMatch, itemScore.descriptionMatch);
 					}
 				});

@@ -254,7 +254,7 @@ export class SearchService implements IRawSearchService {
 		// this is very important because we are also limiting the number of results by config.maxResults
 		// and as such we want the top items to be included in this result set if the number of items
 		// exceeds config.maxResults.
-		const compare = (matchA: IRawFileMatch, matchB: IRawFileMatch) => compareItemsByScore(matchA, matchB, strings.stripWildcards(config.filePattern), FileMatchItemAccessor, scorerCache);
+		const compare = (matchA: IRawFileMatch, matchB: IRawFileMatch) => compareItemsByScore(matchA, matchB, strings.stripWildcards(config.filePattern), true, FileMatchItemAccessor, scorerCache);
 
 		return arrays.topAsync(results, compare, config.maxResults, 10000);
 	}

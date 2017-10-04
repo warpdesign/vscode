@@ -116,7 +116,7 @@ export abstract class BaseEditorPicker extends QuickOpenHandler {
 				return true;
 			}
 
-			const itemScore = scoreItem(e, searchValue, QuickOpenItemAccessor, this.scorerCache);
+			const itemScore = scoreItem(e, searchValue, true, QuickOpenItemAccessor, this.scorerCache);
 			if (!itemScore.score) {
 				return false;
 			}
@@ -133,7 +133,7 @@ export abstract class BaseEditorPicker extends QuickOpenHandler {
 					return stacks.positionOfGroup(e1.group) - stacks.positionOfGroup(e2.group);
 				}
 
-				return compareItemsByScore(e1, e2, searchValue, QuickOpenItemAccessor, this.scorerCache);
+				return compareItemsByScore(e1, e2, searchValue, true, QuickOpenItemAccessor, this.scorerCache);
 			});
 		}
 
