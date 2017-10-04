@@ -44,6 +44,7 @@ export interface IFilterResult {
 	filteredGroups: ISettingsGroup[];
 	allGroups: ISettingsGroup[];
 	matches: IRange[];
+	scores?: { [key: string]: number };
 }
 
 export interface IPreferencesEditorModel<T> {

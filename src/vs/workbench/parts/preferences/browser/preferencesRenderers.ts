@@ -286,7 +286,7 @@ export class DefaultSettingsRenderer extends Disposable implements IPreferencesR
 
 		this._register(this.settingsGroupTitleRenderer.onHiddenAreasChanged(() => this.hiddenAreasRenderer.render()));
 
-		this.editor.setModel(Model.createFromString('[\n{\n}\n]\n', undefined, modeService.getMode('json').getLanguageIdentifier(), URI.parse('vscode://defaultsettings/settings2.json')));
+		this.editor.setModel(Model.createFromString('\n\n\n\n', undefined, modeService.getMode('json').getLanguageIdentifier(), URI.parse('vscode://defaultsettings/settings2.json')));
 	}
 
 	public get associatedPreferencesModel(): IPreferencesEditorModel<ISetting> {
@@ -393,20 +393,24 @@ export class StaticContentHidingRenderer extends Disposable implements HiddenAre
 
 	get hiddenAreas(): IRange[] {
 		const model = this.editor.getModel();
-		return [
-			{
-				startLineNumber: 1,
-				startColumn: model.getLineMinColumn(1),
-				endLineNumber: 2,
-				endColumn: model.getLineMaxColumn(2)
-			},
-			{
-				startLineNumber: model.getLineCount() - 1,
-				startColumn: model.getLineMinColumn(model.getLineCount() - 1),
-				endLineNumber: model.getLineCount(),
-				endColumn: model.getLineMaxColumn(model.getLineCount())
-			}
-		];
+		if (model.getLineCount() > 1) {
+			return [
+				{
+					startLineNumber: 1,
+					startColumn: model.getLineMinColumn(1),
+					endLineNumber: 2,
+					endColumn: model.getLineMaxColumn(2)
+				},
+				{
+					startLineNumber: model.getLineCount() - 1,
+					startColumn: model.getLineMinColumn(model.getLineCount() - 1),
+					endLineNumber: model.getLineCount(),
+					endColumn: model.getLineMaxColumn(model.getLineCount())
+				}
+			];
+		} else {
+			return [];
+		}
 	}
 
 }
@@ -556,9 +560,9 @@ export class MostRelevantMatchesRenderer extends Disposable implements HiddenAre
 		if (result.matches.length) {
 			this.editor.updateOptions({ readOnly: false });
 
-			const settingsValue = this.computeVisibleRanges(result.filteredGroups, result.allGroups, this.originalModel).map(visibleRange => {
+			const settingsValue = this.computeVisibleRanges(result.filteredGroups, result.allGroups, result.scores, this.originalModel).map(visibleRange => {
 				const value = this.originalModel.getValueInRange(visibleRange);
-				return strings.endsWith(value, ',') ? value : value + ',';
+				return value.replace(/[^,]\n/, ',\n');
 			}).join('\n');
 			const newValue = '[\n{\n' + settingsValue + '\n}\n]';
 			this.editor.setValue(newValue);
@@ -571,26 +575,27 @@ export class MostRelevantMatchesRenderer extends Disposable implements HiddenAre
 		}
 	}
 
-	private computeVisibleRanges(filteredGroups: ISettingsGroup[], allSettingsGroups: ISettingsGroup[], model: editorCommon.IModel): IRange[] {
-		const matchingRanges: IRange[] = [];
+	private computeVisibleRanges(filteredGroups: ISettingsGroup[], allSettingsGroups: ISettingsGroup[], scores: any, model: editorCommon.IModel): IRange[] {
+		const matchingRanges: { range: IRange, name: string }[] = [];
 		for (const group of allSettingsGroups) {
 			const filteredGroup = filteredGroups.filter(g => g.title === group.title)[0];
 			if (filteredGroup) {
 				for (const section of group.sections) {
-					// if (section.titleRange) {
-					// 	if (this.containsLine(section.titleRange.startLineNumber, filteredGroup)) {
-					// 		matchingRanges.push(this.createCompleteRange(section.titleRange, model));
-					// 	}
-					// }
 					for (const setting of section.settings) {
 						if (this.containsLine(setting.range.startLineNumber, filteredGroup)) {
-							matchingRanges.push(this.createCompleteRange(setting.range, model));
+							matchingRanges.push({
+								name: setting.key,
+								range: this.createCompleteRange(setting.range, model)
+							});
 						}
 					}
 				}
 			}
 		}
-		return matchingRanges;
+
+		return matchingRanges
+			.sort((a, b) => scores[b.name] - scores[a.name])
+			.map(r => r.range);
 	}
 
 	private containsLine(lineNumber: number, settingsGroup: ISettingsGroup): boolean {

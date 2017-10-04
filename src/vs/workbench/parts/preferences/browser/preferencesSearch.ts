@@ -145,7 +145,7 @@ export class PreferencesSearchProvider {
 
 export class RemoteSearchProvider {
 	private _filter: string;
-	private _remoteSearchP: TPromise<Set<string>>;
+	private _remoteSearchP: TPromise<{ [key: string]: number }>;
 
 	constructor(filter: string) {
 		this._filter = filter;
@@ -155,7 +155,7 @@ export class RemoteSearchProvider {
 	filterPreferences(preferencesModel: ISettingsEditorModel): TPromise<IFilterResult> {
 		return this._remoteSearchP.then(settingsSet => {
 			const settingFilter = (setting: ISetting) => {
-				if (settingsSet.has(setting.key)) {
+				if (!!settingsSet[setting.key]) {
 					const settingMatches = new SettingMatches(this._filter, setting, (filter, setting) => preferencesModel.findValueMatches(filter, setting)).matches;
 					if (settingMatches.length) {
 						return settingMatches;
@@ -167,12 +167,14 @@ export class RemoteSearchProvider {
 				}
 			};
 
-			return preferencesModel.filterSettings(this._filter, group => null, settingFilter);
+			const result = preferencesModel.filterSettings(this._filter, group => null, settingFilter);
+			result.scores = settingsSet;
+			return result;
 		});
 	}
 }
 
-function getSettingsFromBing(filter: string): TPromise<Set<string>> {
+function getSettingsFromBing(filter: string): TPromise<{ [key: string]: number }> {
 	const url = prepareUrl(filter);
 	const p = fetch(url, {
 		headers: {
@@ -185,12 +187,19 @@ function getSettingsFromBing(filter: string): TPromise<Set<string>> {
 		.then(result => {
 			const suggestions = (result.value || [])
 				.filter(r => r['@search.score'] >= 0.2)
-				.map(r => r.Setting)
-				.map(s => s.replace(/^"/, ''))
-				.map(s => s.replace(/"$/, ''));
+				.map(r => ({
+					name: r.Setting,
+					score: r['@search.score']
+				}));
 
-			const suggSet = new Set<string>();
-			suggestions.forEach(s => suggSet.add(s));
+			const suggSet = Object.create(null);
+			suggestions.forEach(s => {
+				const name = s.name
+					.replace(/^"/, '')
+					.replace(/"$/, '');
+				suggSet[name] = s.score;
+			});
+
 			return suggSet;
 		});
 
