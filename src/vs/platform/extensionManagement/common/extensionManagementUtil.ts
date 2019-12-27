@@ -3,9 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-'use strict';
-
-import { ILocalExtension, IGalleryExtension, EXTENSION_IDENTIFIER_REGEX, IExtensionIdentifier } from 'vs/platform/extensionManagement/common/extensionManagement';
+import { ILocalExtension, IGalleryExtension, IExtensionIdentifier, IReportedExtension } from 'vs/platform/extensionManagement/common/extensionManagement';
+import { compareIgnoreCase } from 'vs/base/common/strings';
+import { ExtensionIdentifier } from 'vs/platform/extensions/common/extensions';
 
 export function areSameExtensions(a: IExtensionIdentifier, b: IExtensionIdentifier): boolean {
 	if (a.uuid && b.uuid) {
@@ -14,34 +14,38 @@ export function areSameExtensions(a: IExtensionIdentifier, b: IExtensionIdentifi
 	if (a.id === b.id) {
 		return true;
 	}
-	return adoptToGalleryExtensionId(a.id) === adoptToGalleryExtensionId(b.id);
+	return compareIgnoreCase(a.id, b.id) === 0;
 }
 
-export function getGalleryExtensionId(publisher: string, name: string): string {
-	return `${publisher}.${name.toLocaleLowerCase()}`;
-}
+export class ExtensionIdentifierWithVersion {
+	constructor(
+		readonly identifier: IExtensionIdentifier,
+		readonly version: string
+	) { }
 
-export function getGalleryExtensionIdFromLocal(local: ILocalExtension): string {
-	return getGalleryExtensionId(local.manifest.publisher, local.manifest.name);
-}
-
-export const LOCAL_EXTENSION_ID_REGEX = /^([^.]+\..+)-(\d+\.\d+\.\d+(-.*)?)$/;
-
-export function getIdFromLocalExtensionId(localExtensionId: string): string {
-	const matches = LOCAL_EXTENSION_ID_REGEX.exec(localExtensionId);
-	if (matches && matches[1]) {
-		return adoptToGalleryExtensionId(matches[1]);
+	key(): string {
+		return `${this.identifier.id}-${this.version}`;
 	}
-	return adoptToGalleryExtensionId(localExtensionId);
+
+	equals(o: any): boolean {
+		if (!(o instanceof ExtensionIdentifierWithVersion)) {
+			return false;
+		}
+		return areSameExtensions(this.identifier, o.identifier) && this.version === o.version;
+	}
 }
 
 export function adoptToGalleryExtensionId(id: string): string {
-	return id.replace(EXTENSION_IDENTIFIER_REGEX, (match, publisher: string, name: string) => getGalleryExtensionId(publisher, name));
+	return id.toLocaleLowerCase();
+}
+
+export function getGalleryExtensionId(publisher: string, name: string): string {
+	return `${publisher.toLocaleLowerCase()}.${name.toLocaleLowerCase()}`;
 }
 
 export function groupByExtension<T>(extensions: T[], getExtensionIdentifier: (t: T) => IExtensionIdentifier): T[][] {
 	const byExtension: T[][] = [];
-	const findGroup = extension => {
+	const findGroup = (extension: T) => {
 		for (const group of byExtension) {
 			if (group.some(e => areSameExtensions(getExtensionIdentifier(e), getExtensionIdentifier(extension)))) {
 				return group;
@@ -62,7 +66,7 @@ export function groupByExtension<T>(extensions: T[], getExtensionIdentifier: (t:
 
 export function getLocalExtensionTelemetryData(extension: ILocalExtension): any {
 	return {
-		id: getGalleryExtensionIdFromLocal(extension),
+		id: extension.identifier.id,
 		name: extension.manifest.name,
 		galleryId: null,
 		publisherId: extension.metadata ? extension.metadata.publisherId : null,
@@ -78,10 +82,10 @@ export function getLocalExtensionTelemetryData(extension: ILocalExtension): any 
 		"id" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
 		"name": { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
 		"galleryId": { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
-		"publisherId": { "classification": "PublicNonPersonalData", "purpose": "FeatureInsight" },
-		"publisherName": { "classification": "PublicNonPersonalData", "purpose": "FeatureInsight" },
-		"publisherDisplayName": { "classification": "PublicPersonalData", "purpose": "FeatureInsight" },
-		"dependencies": { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+		"publisherId": { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+		"publisherName": { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+		"publisherDisplayName": { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+		"dependencies": { "classification": "SystemMetaData", "purpose": "FeatureInsight", "isMeasurement": true },
 		"${include}": [
 			"${GalleryExtensionTelemetryData2}"
 		]
@@ -95,10 +99,21 @@ export function getGalleryExtensionTelemetryData(extension: IGalleryExtension): 
 		publisherId: extension.publisherId,
 		publisherName: extension.publisher,
 		publisherDisplayName: extension.publisherDisplayName,
-		dependencies: extension.properties.dependencies.length > 0,
+		dependencies: !!(extension.properties.dependencies && extension.properties.dependencies.length > 0),
 		...extension.telemetryData
 	};
 }
 
-export const BetterMergeDisabledNowKey = 'extensions/bettermergedisablednow';
-export const BetterMergeId = 'pprice.better-merge';
+export const BetterMergeId = new ExtensionIdentifier('pprice.better-merge');
+
+export function getMaliciousExtensionsSet(report: IReportedExtension[]): Set<string> {
+	const result = new Set<string>();
+
+	for (const extension of report) {
+		if (extension.malicious) {
+			result.add(extension.id.id);
+		}
+	}
+
+	return result;
+}

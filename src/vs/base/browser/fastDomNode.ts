@@ -2,7 +2,6 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-'use strict';
 
 import * as dom from 'vs/base/browser/dom';
 
@@ -19,6 +18,7 @@ export class FastDomNode<T extends HTMLElement> {
 	private _fontFamily: string;
 	private _fontWeight: string;
 	private _fontSize: number;
+	private _fontFeatureSettings: string;
 	private _lineHeight: number;
 	private _letterSpacing: number;
 	private _className: string;
@@ -26,6 +26,7 @@ export class FastDomNode<T extends HTMLElement> {
 	private _position: string;
 	private _visibility: string;
 	private _layerHint: boolean;
+	private _contain: 'none' | 'strict' | 'content' | 'size' | 'layout' | 'style' | 'paint';
 
 	constructor(domNode: T) {
 		this.domNode = domNode;
@@ -39,6 +40,7 @@ export class FastDomNode<T extends HTMLElement> {
 		this._fontFamily = '';
 		this._fontWeight = '';
 		this._fontSize = -1;
+		this._fontFeatureSettings = '';
 		this._lineHeight = -1;
 		this._letterSpacing = -100;
 		this._className = '';
@@ -46,6 +48,7 @@ export class FastDomNode<T extends HTMLElement> {
 		this._position = '';
 		this._visibility = '';
 		this._layerHint = false;
+		this._contain = 'none';
 	}
 
 	public setMaxWidth(maxWidth: number): void {
@@ -136,6 +139,14 @@ export class FastDomNode<T extends HTMLElement> {
 		this.domNode.style.fontSize = this._fontSize + 'px';
 	}
 
+	public setFontFeatureSettings(fontFeatureSettings: string): void {
+		if (this._fontFeatureSettings === fontFeatureSettings) {
+			return;
+		}
+		this._fontFeatureSettings = fontFeatureSettings;
+		this.domNode.style.fontFeatureSettings = this._fontFeatureSettings;
+	}
+
 	public setLineHeight(lineHeight: number): void {
 		if (this._lineHeight === lineHeight) {
 			return;
@@ -194,7 +205,15 @@ export class FastDomNode<T extends HTMLElement> {
 			return;
 		}
 		this._layerHint = layerHint;
-		(<any>this.domNode.style).willChange = this._layerHint ? 'transform' : 'auto';
+		this.domNode.style.transform = this._layerHint ? 'translate3d(0px, 0px, 0px)' : '';
+	}
+
+	public setContain(contain: 'none' | 'strict' | 'content' | 'size' | 'layout' | 'style' | 'paint'): void {
+		if (this._contain === contain) {
+			return;
+		}
+		this._contain = contain;
+		(<any>this.domNode.style).contain = this._contain;
 	}
 
 	public setAttribute(name: string, value: string): void {

@@ -10,34 +10,36 @@ import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 
 export class FoldingDecorationProvider implements IDecorationProvider {
 
-	private COLLAPSED_VISUAL_DECORATION = ModelDecorationOptions.register({
+	private static readonly COLLAPSED_VISUAL_DECORATION = ModelDecorationOptions.register({
 		stickiness: TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
 		afterContentClassName: 'inline-folded',
-		linesDecorationsClassName: 'folding collapsed'
+		className: 'folded-background',
+		isWholeLine: true,
+		linesDecorationsClassName: 'codicon codicon-chevron-right'
 	});
 
-	private EXPANDED_AUTO_HIDE_VISUAL_DECORATION = ModelDecorationOptions.register({
+	private static readonly EXPANDED_AUTO_HIDE_VISUAL_DECORATION = ModelDecorationOptions.register({
 		stickiness: TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
-		linesDecorationsClassName: 'folding'
+		linesDecorationsClassName: 'codicon codicon-chevron-down'
 	});
 
-	private EXPANDED_VISUAL_DECORATION = ModelDecorationOptions.register({
+	private static readonly EXPANDED_VISUAL_DECORATION = ModelDecorationOptions.register({
 		stickiness: TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
-		linesDecorationsClassName: 'folding alwaysShowFoldIcons'
+		linesDecorationsClassName: 'codicon codicon-chevron-down alwaysShowFoldIcons'
 	});
 
 	public autoHideFoldingControls: boolean = true;
 
-	constructor(private editor: ICodeEditor) {
+	constructor(private readonly editor: ICodeEditor) {
 	}
 
 	getDecorationOption(isCollapsed: boolean): ModelDecorationOptions {
 		if (isCollapsed) {
-			return this.COLLAPSED_VISUAL_DECORATION;
+			return FoldingDecorationProvider.COLLAPSED_VISUAL_DECORATION;
 		} else if (this.autoHideFoldingControls) {
-			return this.EXPANDED_AUTO_HIDE_VISUAL_DECORATION;
+			return FoldingDecorationProvider.EXPANDED_AUTO_HIDE_VISUAL_DECORATION;
 		} else {
-			return this.EXPANDED_VISUAL_DECORATION;
+			return FoldingDecorationProvider.EXPANDED_VISUAL_DECORATION;
 		}
 	}
 

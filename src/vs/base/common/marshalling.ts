@@ -2,9 +2,9 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-'use strict';
 
-import URI from 'vs/base/common/uri';
+import { URI } from 'vs/base/common/uri';
+import { regExpFlags } from 'vs/base/common/strings';
 
 export function stringify(obj: any): string {
 	return JSON.stringify(obj, replacer);
@@ -12,11 +12,11 @@ export function stringify(obj: any): string {
 
 export function parse(text: string): any {
 	let data = JSON.parse(text);
-	data = revive(data, 0);
+	data = revive(data);
 	return data;
 }
 
-interface MarshalledObject {
+export interface MarshalledObject {
 	$mid: number;
 }
 
@@ -25,15 +25,14 @@ function replacer(key: string, value: any): any {
 	if (value instanceof RegExp) {
 		return {
 			$mid: 2,
-			source: (<RegExp>value).source,
-			flags: ((<RegExp>value).global ? 'g' : '') + ((<RegExp>value).ignoreCase ? 'i' : '') + ((<RegExp>value).multiline ? 'm' : ''),
+			source: value.source,
+			flags: regExpFlags(value),
 		};
 	}
 	return value;
 }
 
-export function revive(obj: any, depth: number): any {
-
+export function revive(obj: any, depth = 0): any {
 	if (!obj || depth > 200) {
 		return obj;
 	}

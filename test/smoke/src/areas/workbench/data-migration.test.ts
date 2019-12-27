@@ -3,130 +3,93 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import * as assert from 'assert';
+import { Application, ApplicationOptions } from '../../../../automation';
+import { join } from 'path';
 
-import { SpectronApplication, Quality } from '../../spectron/application';
-import * as rimraf from 'rimraf';
+export function setup(stableCodePath: string, testDataPath: string) {
 
-export interface ICreateAppFn {
-	(quality: Quality): SpectronApplication | null;
-}
 
-export function setup(userDataDir: string, createApp: ICreateAppFn) {
-
-	describe('Data Migration', () => {
-		afterEach(async function () {
-			await new Promise((c, e) => rimraf(userDataDir, { maxBusyTries: 10 }, err => err ? e(err) : c()));
-		});
-
-		it('checks if the Untitled file is restored migrating from stable to latest', async function () {
-			const stableApp = createApp(Quality.Stable);
-
-			if (!stableApp) {
+	describe('Data Migration: This test MUST run before releasing by providing the --stable-build command line argument', () => {
+		it(`verifies opened editors are restored`, async function () {
+			if (!stableCodePath) {
 				this.skip();
-				return;
 			}
 
-			await stableApp.start();
-			stableApp.suiteName = 'Data Migration';
+			const userDataDir = join(testDataPath, 'd2'); // different data dir from the other tests
 
-			const textToType = 'Very dirty file';
+			const stableOptions: ApplicationOptions = Object.assign({}, this.defaultOptions);
+			stableOptions.codePath = stableCodePath;
+			stableOptions.userDataDir = userDataDir;
 
-			await stableApp.workbench.newUntitledFile();
-			await stableApp.workbench.editor.waitForTypeInEditor('Untitled-1', textToType);
+			const stableApp = new Application(stableOptions);
+			await stableApp!.start();
 
-			await stableApp.stop();
-			await new Promise(c => setTimeout(c, 500)); // wait until all resources are released (e.g. locked local storage)
-
-			// Checking latest version for the restored state
-			const app = createApp(Quality.Insiders);
-
-			if (!app) {
-				return assert(false);
-			}
-
-			await app.start(false);
-			app.suiteName = 'Data Migration';
-
-			assert.ok(await app.workbench.waitForActiveTab('Untitled-1', true), `Untitled-1 tab is not present after migration.`);
-
-			await app.workbench.editor.waitForEditorContents('Untitled-1', c => c.indexOf(textToType) > -1);
-			await app.screenCapturer.capture('Untitled file text');
-
-			await app.stop();
-		});
-
-		it('checks if the newly created dirty file is restored migrating from stable to latest', async function () {
-			const stableApp = createApp(Quality.Stable);
-
-			if (!stableApp) {
-				this.skip();
-				return;
-			}
-
-			await stableApp.start();
-			stableApp.suiteName = 'Data Migration';
-
-			const fileName = 'app.js';
-			const textPart = 'This is going to be an unsaved file';
-
-			await stableApp.workbench.quickopen.openFile(fileName);
-
-			await stableApp.workbench.editor.waitForTypeInEditor(fileName, textPart);
-
-			await stableApp.stop();
-			await new Promise(c => setTimeout(c, 500)); // wait until all resources are released (e.g. locked local storage)
-
-			// Checking latest version for the restored state
-			const app = createApp(Quality.Insiders);
-
-			if (!app) {
-				return assert(false);
-			}
-
-			await app.start(false);
-			app.suiteName = 'Data Migration';
-
-			assert.ok(await app.workbench.waitForActiveTab(fileName), `dirty file tab is not present after migration.`);
-			await app.workbench.editor.waitForEditorContents(fileName, c => c.indexOf(textPart) > -1);
-
-			await app.stop();
-		});
-
-		it('checks if opened tabs are restored migrating from stable to latest', async function () {
-			const stableApp = createApp(Quality.Stable);
-
-			if (!stableApp) {
-				this.skip();
-				return;
-			}
-
-			await stableApp.start();
-			stableApp.suiteName = 'Data Migration';
-
-			const fileName1 = 'app.js', fileName2 = 'jsconfig.json', fileName3 = 'readme.md';
-
-			await stableApp.workbench.quickopen.openFile(fileName1);
+			// Open 3 editors and pin 2 of them
+			await stableApp.workbench.quickopen.openFile('www');
 			await stableApp.workbench.quickopen.runCommand('View: Keep Editor');
-			await stableApp.workbench.quickopen.openFile(fileName2);
+
+			await stableApp.workbench.quickopen.openFile('app.js');
 			await stableApp.workbench.quickopen.runCommand('View: Keep Editor');
-			await stableApp.workbench.quickopen.openFile(fileName3);
+
+			await stableApp.workbench.editors.newUntitledFile();
+
 			await stableApp.stop();
 
-			const app = createApp(Quality.Insiders);
+			const insiderOptions: ApplicationOptions = Object.assign({}, this.defaultOptions);
+			insiderOptions.userDataDir = userDataDir;
 
-			if (!app) {
-				return assert(false);
+			const insidersApp = new Application(insiderOptions);
+			await insidersApp!.start(false /* not expecting walkthrough path */);
+
+			// Verify 3 editors are open
+			await insidersApp.workbench.editors.waitForEditorFocus('Untitled-1');
+			await insidersApp.workbench.editors.selectTab('app.js');
+			await insidersApp.workbench.editors.selectTab('www');
+
+			await insidersApp.stop();
+		});
+
+		it(`verifies that 'hot exit' works for dirty files`, async function () {
+			if (!stableCodePath) {
+				this.skip();
 			}
 
-			await app.start(false);
-			app.suiteName = 'Data Migration';
+			const userDataDir = join(testDataPath, 'd3'); // different data dir from the other tests
 
-			assert.ok(await app.workbench.waitForTab(fileName1), `${fileName1} tab was not restored after migration.`);
-			assert.ok(await app.workbench.waitForTab(fileName2), `${fileName2} tab was not restored after migration.`);
-			assert.ok(await app.workbench.waitForTab(fileName3), `${fileName3} tab was not restored after migration.`);
+			const stableOptions: ApplicationOptions = Object.assign({}, this.defaultOptions);
+			stableOptions.codePath = stableCodePath;
+			stableOptions.userDataDir = userDataDir;
 
-			await app.stop();
+			const stableApp = new Application(stableOptions);
+			await stableApp!.start();
+
+			await stableApp.workbench.editors.newUntitledFile();
+
+			const untitled = 'Untitled-1';
+			const textToTypeInUntitled = 'Hello, Untitled Code';
+			await stableApp.workbench.editor.waitForTypeInEditor(untitled, textToTypeInUntitled);
+
+			const readmeMd = 'readme.md';
+			const textToType = 'Hello, Code';
+			await stableApp.workbench.quickopen.openFile(readmeMd);
+			await stableApp.workbench.editor.waitForTypeInEditor(readmeMd, textToType);
+
+			await stableApp.stop();
+
+			const insiderOptions: ApplicationOptions = Object.assign({}, this.defaultOptions);
+			insiderOptions.userDataDir = userDataDir;
+
+			const insidersApp = new Application(insiderOptions);
+			await insidersApp!.start(false /* not expecting walkthrough path */);
+
+			await insidersApp.workbench.editors.waitForActiveTab(readmeMd, true);
+			await insidersApp.workbench.editor.waitForEditorContents(readmeMd, c => c.indexOf(textToType) > -1);
+
+			await insidersApp.workbench.editors.waitForTab(untitled, true);
+			await insidersApp.workbench.editors.selectTab(untitled, true);
+			await insidersApp.workbench.editor.waitForEditorContents(untitled, c => c.indexOf(textToTypeInUntitled) > -1);
+
+			await insidersApp.stop();
 		});
 	});
 }

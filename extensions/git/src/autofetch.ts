@@ -3,13 +3,11 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-'use strict';
-
-import { workspace, Disposable, EventEmitter, Memento, window, MessageItem, ConfigurationTarget, commands, Uri } from 'vscode';
-import { GitErrorCodes } from './git';
+import { workspace, Disposable, EventEmitter, Memento, window, MessageItem, ConfigurationTarget, Uri } from 'vscode';
 import { Repository, Operation } from './repository';
 import { eventToPromise, filterEvent, onceEvent } from './util';
 import * as nls from 'vscode-nls';
+import { GitErrorCodes } from './api/git';
 
 const localize = nls.loadMessageBundle();
 
@@ -19,7 +17,6 @@ function isRemoteOperation(operation: Operation): boolean {
 
 export class AutoFetcher {
 
-	private static readonly Period = 3 * 60 * 1000 /* three minutes */;
 	private static DidInformUser = 'autofetch.didInformUser';
 
 	private _onDidChange = new EventEmitter<boolean>();
@@ -54,22 +51,16 @@ export class AutoFetcher {
 		}
 
 		const yes: MessageItem = { title: localize('yes', "Yes") };
-		const readMore: MessageItem = { title: localize('read more', "Read More") };
 		const no: MessageItem = { isCloseAffordance: true, title: localize('no', "No") };
 		const askLater: MessageItem = { title: localize('not now', "Ask Me Later") };
-		const result = await window.showInformationMessage(localize('suggest auto fetch', "Would you like Code to periodically run `git fetch`?"), yes, readMore, no, askLater);
+		const result = await window.showInformationMessage(localize('suggest auto fetch', "Would you like Code to [periodically run 'git fetch']({0})?", 'https://go.microsoft.com/fwlink/?linkid=865294'), yes, no, askLater);
 
 		if (result === askLater) {
 			return;
 		}
 
-		if (result === readMore) {
-			commands.executeCommand('vscode.open', Uri.parse('https://go.microsoft.com/fwlink/?linkid=865294'));
-			return this.onFirstGoodRemoteOperation();
-		}
-
 		if (result === yes) {
-			const gitConfig = workspace.getConfiguration('git');
+			const gitConfig = workspace.getConfiguration('git', Uri.file(this.repository.root));
 			gitConfig.update('autofetch', true, ConfigurationTarget.Global);
 		}
 
@@ -77,7 +68,7 @@ export class AutoFetcher {
 	}
 
 	private onConfiguration(): void {
-		const gitConfig = workspace.getConfiguration('git');
+		const gitConfig = workspace.getConfiguration('git', Uri.file(this.repository.root));
 
 		if (gitConfig.get<boolean>('autofetch') === false) {
 			this.disable();
@@ -108,7 +99,7 @@ export class AutoFetcher {
 			}
 
 			try {
-				await this.repository.fetch();
+				await this.repository.fetchDefault({ silent: true });
 			} catch (err) {
 				if (err.gitErrorCode === GitErrorCodes.AuthenticationFailed) {
 					this.disable();
@@ -119,8 +110,10 @@ export class AutoFetcher {
 				return;
 			}
 
-			const timeout = new Promise(c => setTimeout(c, AutoFetcher.Period));
+			const period = workspace.getConfiguration('git', Uri.file(this.repository.root)).get<number>('autofetchPeriod', 180) * 1000;
+			const timeout = new Promise(c => setTimeout(c, period));
 			const whenDisabled = eventToPromise(filterEvent(this.onDidChange, enabled => !enabled));
+
 			await Promise.race([timeout, whenDisabled]);
 		}
 	}

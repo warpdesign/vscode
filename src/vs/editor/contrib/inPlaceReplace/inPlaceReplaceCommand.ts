@@ -2,7 +2,6 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-'use strict';
 
 import { Selection } from 'vs/editor/common/core/selection';
 import * as editorCommon from 'vs/editor/common/editorCommon';
@@ -11,9 +10,9 @@ import { ITextModel } from 'vs/editor/common/model';
 
 export class InPlaceReplaceCommand implements editorCommon.ICommand {
 
-	private _editRange: Range;
-	private _originalSelection: Selection;
-	private _text: string;
+	private readonly _editRange: Range;
+	private readonly _originalSelection: Selection;
+	private readonly _text: string;
 
 	constructor(editRange: Range, originalSelection: Selection, text: string) {
 		this._editRange = editRange;
@@ -26,8 +25,8 @@ export class InPlaceReplaceCommand implements editorCommon.ICommand {
 	}
 
 	public computeCursorState(model: ITextModel, helper: editorCommon.ICursorStateComputerData): Selection {
-		var inverseEditOperations = helper.getInverseEditOperations();
-		var srcRange = inverseEditOperations[0].range;
+		const inverseEditOperations = helper.getInverseEditOperations();
+		const srcRange = inverseEditOperations[0].range;
 
 		if (!this._originalSelection.isEmpty()) {
 			// Preserve selection and extends to typed text

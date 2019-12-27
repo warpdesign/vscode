@@ -2,15 +2,15 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-'use strict';
 
-import { $, Dimension } from 'vs/base/browser/builder';
+import { Dimension } from 'vs/base/browser/dom';
+import { IDisposable } from 'vs/base/common/lifecycle';
 import { QuickOpenModel } from 'vs/base/parts/quickopen/browser/quickOpenModel';
 import { QuickOpenWidget } from 'vs/base/parts/quickopen/browser/quickOpenWidget';
 import { IAutoFocus } from 'vs/base/parts/quickopen/common/quickOpen';
 import { ICodeEditor, IOverlayWidget, IOverlayWidgetPosition, OverlayWidgetPositionPreference } from 'vs/editor/browser/editorBrowser';
+import { foreground } from 'vs/platform/theme/common/colorRegistry';
 import { attachQuickOpenStyler } from 'vs/platform/theme/common/styler';
-import { IDisposable } from 'vs/base/common/lifecycle';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 
 export interface IQuickOpenEditorWidgetOptions {
@@ -21,9 +21,9 @@ export class QuickOpenEditorWidget implements IOverlayWidget {
 
 	private static readonly ID = 'editor.contrib.quickOpenEditorWidget';
 
-	private codeEditor: ICodeEditor;
-	private themeService: IThemeService;
-	private visible: boolean;
+	private readonly codeEditor: ICodeEditor;
+	private readonly themeService: IThemeService;
+	private visible: boolean | undefined;
 	private quickOpenWidget: QuickOpenWidget;
 	private domNode: HTMLElement;
 	private styler: IDisposable;
@@ -31,12 +31,9 @@ export class QuickOpenEditorWidget implements IOverlayWidget {
 	constructor(codeEditor: ICodeEditor, onOk: () => void, onCancel: () => void, onType: (value: string) => void, configuration: IQuickOpenEditorWidgetOptions, themeService: IThemeService) {
 		this.codeEditor = codeEditor;
 		this.themeService = themeService;
+		this.visible = false;
 
-		this.create(onOk, onCancel, onType, configuration);
-	}
-
-	private create(onOk: () => void, onCancel: () => void, onType: (value: string) => void, configuration: IQuickOpenEditorWidgetOptions): void {
-		this.domNode = $().div().getHTMLElement();
+		this.domNode = document.createElement('div');
 
 		this.quickOpenWidget = new QuickOpenWidget(
 			this.domNode,
@@ -45,40 +42,42 @@ export class QuickOpenEditorWidget implements IOverlayWidget {
 				onCancel: onCancel,
 				onType: onType
 			}, {
-				inputPlaceHolder: null,
-				inputAriaLabel: configuration.inputAriaLabel,
-				keyboardSupport: true
-			}
+			inputPlaceHolder: undefined,
+			inputAriaLabel: configuration.inputAriaLabel,
+			keyboardSupport: true
+		}
 		);
-		this.styler = attachQuickOpenStyler(this.quickOpenWidget, this.themeService);
+		this.styler = attachQuickOpenStyler(this.quickOpenWidget, this.themeService, {
+			pickerGroupForeground: foreground
+		});
 
 		this.quickOpenWidget.create();
 		this.codeEditor.addOverlayWidget(this);
 	}
 
-	public setInput(model: QuickOpenModel, focus: IAutoFocus): void {
+	setInput(model: QuickOpenModel, focus: IAutoFocus): void {
 		this.quickOpenWidget.setInput(model, focus);
 	}
 
-	public getId(): string {
+	getId(): string {
 		return QuickOpenEditorWidget.ID;
 	}
 
-	public getDomNode(): HTMLElement {
+	getDomNode(): HTMLElement {
 		return this.domNode;
 	}
 
-	public destroy(): void {
+	destroy(): void {
 		this.codeEditor.removeOverlayWidget(this);
 		this.quickOpenWidget.dispose();
 		this.styler.dispose();
 	}
 
-	public isVisible(): boolean {
-		return this.visible;
+	isVisible(): boolean {
+		return !!this.visible;
 	}
 
-	public show(value: string): void {
+	show(value: string): void {
 		this.visible = true;
 
 		const editorLayout = this.codeEditor.getLayoutInfo();
@@ -90,13 +89,13 @@ export class QuickOpenEditorWidget implements IOverlayWidget {
 		this.codeEditor.layoutOverlayWidget(this);
 	}
 
-	public hide(): void {
+	hide(): void {
 		this.visible = false;
 		this.quickOpenWidget.hide();
 		this.codeEditor.layoutOverlayWidget(this);
 	}
 
-	public getPosition(): IOverlayWidgetPosition {
+	getPosition(): IOverlayWidgetPosition | null {
 		if (this.visible) {
 			return {
 				preference: OverlayWidgetPositionPreference.TOP_CENTER

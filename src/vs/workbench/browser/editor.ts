@@ -3,17 +3,13 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-'use strict';
-
 import { EditorInput } from 'vs/workbench/common/editor';
 import { SyncDescriptor } from 'vs/platform/instantiation/common/descriptors';
 import { Registry } from 'vs/platform/registry/common/platform';
 import { BaseEditor } from 'vs/workbench/browser/parts/editor/baseEditor';
-import { IConstructorSignature0, IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
-import { isArray } from 'vs/base/common/types';
-import URI from 'vs/base/common/uri';
-import { DataTransfers } from 'vs/base/browser/dnd';
-import { IEditorViewState } from 'vs/editor/common/editorCommon';
+import { IConstructorSignature0, IInstantiationService, BrandedService } from 'vs/platform/instantiation/common/instantiation';
+import { find } from 'vs/base/common/arrays';
+import { IDisposable, toDisposable } from 'vs/base/common/lifecycle';
 
 export interface IEditorDescriptor {
 	instantiate(instantiationService: IInstantiationService): BaseEditor;
@@ -21,7 +17,7 @@ export interface IEditorDescriptor {
 	getId(): string;
 	getName(): string;
 
-	describes(obj: any): boolean;
+	describes(obj: unknown): boolean;
 }
 
 export interface IEditorRegistry {
@@ -32,26 +28,25 @@ export interface IEditorRegistry {
 	 * input, the input itself will be asked which editor it prefers if this method is provided. Otherwise
 	 * the first editor in the list will be returned.
 	 *
-	 * @param editorInputDescriptor a constructor function that returns an instance of EditorInput for which the
+	 * @param inputDescriptors A set of constructor functions that return an instance of EditorInput for which the
 	 * registered editor should be used for.
 	 */
-	registerEditor(descriptor: IEditorDescriptor, editorInputDescriptor: SyncDescriptor<EditorInput>): void;
-	registerEditor(descriptor: IEditorDescriptor, editorInputDescriptor: SyncDescriptor<EditorInput>[]): void;
+	registerEditor(descriptor: IEditorDescriptor, inputDescriptors: readonly SyncDescriptor<EditorInput>[]): IDisposable;
 
 	/**
-	 * Returns the editor descriptor for the given input or null if none.
+	 * Returns the editor descriptor for the given input or `undefined` if none.
 	 */
-	getEditor(input: EditorInput): IEditorDescriptor;
+	getEditor(input: EditorInput): IEditorDescriptor | undefined;
 
 	/**
-	 * Returns the editor descriptor for the given identifier or null if none.
+	 * Returns the editor descriptor for the given identifier or `undefined` if none.
 	 */
-	getEditorById(editorId: string): IEditorDescriptor;
+	getEditorById(editorId: string): IEditorDescriptor | undefined;
 
 	/**
 	 * Returns an array of registered editors known to the platform.
 	 */
-	getEditors(): IEditorDescriptor[];
+	getEditors(): readonly IEditorDescriptor[];
 }
 
 /**
@@ -59,68 +54,66 @@ export interface IEditorRegistry {
  * can load lazily in the workbench.
  */
 export class EditorDescriptor implements IEditorDescriptor {
-	private ctor: IConstructorSignature0<BaseEditor>;
-	private id: string;
-	private name: string;
 
-	constructor(ctor: IConstructorSignature0<BaseEditor>, id: string, name: string) {
-		this.ctor = ctor;
-		this.id = id;
-		this.name = name;
+	static create<Services extends BrandedService[]>(
+		ctor: { new(...services: Services): BaseEditor },
+		id: string,
+		name: string
+	): EditorDescriptor {
+		return new EditorDescriptor(ctor as IConstructorSignature0<BaseEditor>, id, name);
 	}
 
-	public instantiate(instantiationService: IInstantiationService): BaseEditor {
+	constructor(
+		private readonly ctor: IConstructorSignature0<BaseEditor>,
+		private readonly id: string,
+		private readonly name: string
+	) { }
+
+	instantiate(instantiationService: IInstantiationService): BaseEditor {
 		return instantiationService.createInstance(this.ctor);
 	}
 
-	public getId(): string {
+	getId(): string {
 		return this.id;
 	}
 
-	public getName(): string {
+	getName(): string {
 		return this.name;
 	}
 
-	public describes(obj: any): boolean {
-		return obj instanceof BaseEditor && (<BaseEditor>obj).getId() === this.id;
+	describes(obj: unknown): boolean {
+		return obj instanceof BaseEditor && obj.getId() === this.id;
 	}
 }
 
-const INPUT_DESCRIPTORS_PROPERTY = '__$inputDescriptors';
-
 class EditorRegistry implements IEditorRegistry {
-	private editors: EditorDescriptor[];
 
-	constructor() {
-		this.editors = [];
-	}
+	private readonly editors: EditorDescriptor[] = [];
+	private readonly mapEditorToInputs = new Map<EditorDescriptor, readonly SyncDescriptor<EditorInput>[]>();
 
-	public registerEditor(descriptor: EditorDescriptor, editorInputDescriptor: SyncDescriptor<EditorInput>): void;
-	public registerEditor(descriptor: EditorDescriptor, editorInputDescriptor: SyncDescriptor<EditorInput>[]): void;
-	public registerEditor(descriptor: EditorDescriptor, editorInputDescriptor: any): void {
+	registerEditor(descriptor: EditorDescriptor, inputDescriptors: readonly SyncDescriptor<EditorInput>[]): IDisposable {
+		this.mapEditorToInputs.set(descriptor, inputDescriptors);
 
-		// Support both non-array and array parameter
-		let inputDescriptors: SyncDescriptor<EditorInput>[] = [];
-		if (!isArray(editorInputDescriptor)) {
-			inputDescriptors.push(editorInputDescriptor);
-		} else {
-			inputDescriptors = editorInputDescriptor;
-		}
-
-		// Register (Support multiple Editors per Input)
-		descriptor[INPUT_DESCRIPTORS_PROPERTY] = inputDescriptors;
 		this.editors.push(descriptor);
+
+		return toDisposable(() => {
+			this.mapEditorToInputs.delete(descriptor);
+
+			const index = this.editors.indexOf(descriptor);
+			if (index !== -1) {
+				this.editors.splice(index, 1);
+			}
+		});
 	}
 
-	public getEditor(input: EditorInput): EditorDescriptor {
+	getEditor(input: EditorInput): EditorDescriptor | undefined {
 		const findEditorDescriptors = (input: EditorInput, byInstanceOf?: boolean): EditorDescriptor[] => {
 			const matchingDescriptors: EditorDescriptor[] = [];
 
-			for (let i = 0; i < this.editors.length; i++) {
-				const editor = this.editors[i];
-				const inputDescriptors = <SyncDescriptor<EditorInput>[]>editor[INPUT_DESCRIPTORS_PROPERTY];
-				for (let j = 0; j < inputDescriptors.length; j++) {
-					const inputClass = inputDescriptors[j].ctor;
+			for (const editor of this.editors) {
+				const inputDescriptors = this.mapEditorToInputs.get(editor) || [];
+				for (const inputDescriptor of inputDescriptors) {
+					const inputClass = inputDescriptor.ctor;
 
 					// Direct check on constructor type (ignores prototype chain)
 					if (!byInstanceOf && input.constructor === inputClass) {
@@ -149,7 +142,7 @@ class EditorRegistry implements IEditorRegistry {
 		};
 
 		const descriptors = findEditorDescriptors(input);
-		if (descriptors && descriptors.length > 0) {
+		if (descriptors.length > 0) {
 
 			// Ask the input for its preferred Editor
 			const preferredEditorId = input.getPreferredEditorId(descriptors.map(d => d.getId()));
@@ -161,34 +154,24 @@ class EditorRegistry implements IEditorRegistry {
 			return descriptors[0];
 		}
 
-		return null;
+		return undefined;
 	}
 
-	public getEditorById(editorId: string): EditorDescriptor {
-		for (let i = 0; i < this.editors.length; i++) {
-			const editor = this.editors[i];
-			if (editor.getId() === editorId) {
-				return editor;
-			}
-		}
-
-		return null;
+	getEditorById(editorId: string): EditorDescriptor | undefined {
+		return find(this.editors, editor => editor.getId() === editorId);
 	}
 
-	public getEditors(): EditorDescriptor[] {
+	getEditors(): readonly EditorDescriptor[] {
 		return this.editors.slice(0);
 	}
 
-	public setEditors(editorsToSet: EditorDescriptor[]): void {
-		this.editors = editorsToSet;
-	}
-
-	public getEditorInputs(): any[] {
-		const inputClasses: any[] = [];
-		for (let i = 0; i < this.editors.length; i++) {
-			const editor = this.editors[i];
-			const editorInputDescriptors = <SyncDescriptor<EditorInput>[]>editor[INPUT_DESCRIPTORS_PROPERTY];
-			inputClasses.push(...editorInputDescriptors.map(descriptor => descriptor.ctor));
+	getEditorInputs(): SyncDescriptor<EditorInput>[] {
+		const inputClasses: SyncDescriptor<EditorInput>[] = [];
+		for (const editor of this.editors) {
+			const editorInputDescriptors = this.mapEditorToInputs.get(editor);
+			if (editorInputDescriptors) {
+				inputClasses.push(...editorInputDescriptors.map(descriptor => descriptor.ctor));
+			}
 		}
 
 		return inputClasses;
@@ -200,78 +183,3 @@ export const Extensions = {
 };
 
 Registry.add(Extensions.Editors, new EditorRegistry());
-
-export interface IDraggedResource {
-	resource: URI;
-	isExternal: boolean;
-}
-
-export interface IDraggedEditor extends IDraggedResource {
-	backupResource?: URI;
-	viewState?: IEditorViewState;
-}
-
-export interface ISerializedDraggedEditor {
-	resource: string;
-	backupResource: string;
-	viewState: IEditorViewState;
-}
-
-export const CodeDataTransfers = {
-	EDITOR: 'CodeEditor'
-};
-
-export function extractResources(e: DragEvent, externalOnly?: boolean): (IDraggedResource | IDraggedEditor)[] {
-	const resources: (IDraggedResource | IDraggedEditor)[] = [];
-	if (e.dataTransfer.types.length > 0) {
-
-		// Check for window-to-window DND
-		if (!externalOnly) {
-
-			// Data Transfer: Code Editor
-			const rawEditorData = e.dataTransfer.getData(CodeDataTransfers.EDITOR);
-			if (rawEditorData) {
-				try {
-					const draggedEditor = JSON.parse(rawEditorData) as ISerializedDraggedEditor;
-					resources.push({ resource: URI.parse(draggedEditor.resource), backupResource: URI.parse(draggedEditor.backupResource), viewState: draggedEditor.viewState, isExternal: false });
-				} catch (error) {
-					// Invalid URI
-				}
-			}
-
-			// Data Transfer: URL
-			else {
-				try {
-					const rawURLsData = e.dataTransfer.getData(DataTransfers.URLS);
-					if (rawURLsData) {
-						const uriStrArray: string[] = JSON.parse(rawURLsData);
-						resources.push(...uriStrArray.map(uriStr => ({ resource: URI.parse(uriStr), isExternal: false })));
-					} else {
-						const rawURLData = e.dataTransfer.getData(DataTransfers.URL);
-						if (rawURLData) {
-							resources.push({ resource: URI.parse(rawURLData), isExternal: false });
-						}
-					}
-				} catch (error) {
-					// Invalid URI
-				}
-			}
-		}
-
-		// Check for native file transfer
-		if (e.dataTransfer && e.dataTransfer.files) {
-			for (let i = 0; i < e.dataTransfer.files.length; i++) {
-				const file = e.dataTransfer.files[i] as { path: string };
-				if (file && file.path) {
-					try {
-						resources.push({ resource: URI.file(file.path), isExternal: true });
-					} catch (error) {
-						// Invalid URI
-					}
-				}
-			}
-		}
-	}
-
-	return resources;
-}

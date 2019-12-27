@@ -3,32 +3,34 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-'use strict';
-
-import { TPromise } from 'vs/base/common/winjs.base';
-import { ProxyIdentifier, IRPCProtocol } from 'vs/workbench/services/extensions/node/proxyIdentifier';
+import { ProxyIdentifier } from 'vs/workbench/services/extensions/common/proxyIdentifier';
 import { CharCode } from 'vs/base/common/charCode';
-import * as marshalling from 'vs/base/common/marshalling';
+import { IExtHostContext } from 'vs/workbench/api/common/extHost.protocol';
+import { isThenable } from 'vs/base/common/async';
+import { IExtHostRpcService } from 'vs/workbench/api/common/extHostRpcService';
 
-export function SingleProxyRPCProtocol(thing: any): IRPCProtocol {
+export function SingleProxyRPCProtocol(thing: any): IExtHostContext & IExtHostRpcService {
 	return {
+		_serviceBrand: undefined,
+		remoteAuthority: null!,
 		getProxy<T>(): T {
 			return thing;
 		},
 		set<T, R extends T>(identifier: ProxyIdentifier<T>, value: R): R {
 			return value;
 		},
-		assertRegistered: undefined
+		assertRegistered: undefined!
 	};
 }
 
-declare var Proxy; // TODO@TypeScript
+export class TestRPCProtocol implements IExtHostContext, IExtHostRpcService {
 
-export class TestRPCProtocol implements IRPCProtocol {
+	public _serviceBrand: undefined;
+	public remoteAuthority = null!;
 
 	private _callCountValue: number = 0;
-	private _idle: Promise<any>;
-	private _completeIdle: Function;
+	private _idle?: Promise<any>;
+	private _completeIdle?: Function;
 
 	private readonly _locals: { [id: string]: any; };
 	private readonly _proxies: { [id: string]: any; };
@@ -69,18 +71,18 @@ export class TestRPCProtocol implements IRPCProtocol {
 	}
 
 	public getProxy<T>(identifier: ProxyIdentifier<T>): T {
-		if (!this._proxies[identifier.id]) {
-			this._proxies[identifier.id] = this._createProxy(identifier.id, identifier.isFancy);
+		if (!this._proxies[identifier.sid]) {
+			this._proxies[identifier.sid] = this._createProxy(identifier.sid);
 		}
-		return this._proxies[identifier.id];
+		return this._proxies[identifier.sid];
 	}
 
-	private _createProxy<T>(proxyId: string, isFancy: boolean): T {
+	private _createProxy<T>(proxyId: string): T {
 		let handler = {
-			get: (target, name: string) => {
+			get: (target: any, name: string) => {
 				if (!target[name] && name.charCodeAt(0) === CharCode.DollarSign) {
 					target[name] = (...myArgs: any[]) => {
-						return this._remoteCall(proxyId, name, myArgs, isFancy);
+						return this._remoteCall(proxyId, name, myArgs);
 					};
 				}
 				return target[name];
@@ -90,35 +92,35 @@ export class TestRPCProtocol implements IRPCProtocol {
 	}
 
 	public set<T, R extends T>(identifier: ProxyIdentifier<T>, value: R): R {
-		this._locals[identifier.id] = value;
+		this._locals[identifier.sid] = value;
 		return value;
 	}
 
-	protected _remoteCall(proxyId: string, path: string, args: any[], isFancy: boolean): TPromise<any> {
+	protected _remoteCall(proxyId: string, path: string, args: any[]): Promise<any> {
 		this._callCount++;
 
-		return new TPromise<any>((c) => {
+		return new Promise<any>((c) => {
 			setTimeout(c, 0);
 		}).then(() => {
 			const instance = this._locals[proxyId];
 			// pretend the args went over the wire... (invoke .toJSON on objects...)
-			const wireArgs = simulateWireTransfer(args, isFancy);
-			let p: Thenable<any>;
+			const wireArgs = simulateWireTransfer(args);
+			let p: Promise<any>;
 			try {
 				let result = (<Function>instance[path]).apply(instance, wireArgs);
-				p = TPromise.is(result) ? result : TPromise.as(result);
+				p = isThenable(result) ? result : Promise.resolve(result);
 			} catch (err) {
-				p = TPromise.wrapError(err);
+				p = Promise.reject(err);
 			}
 
 			return p.then(result => {
 				this._callCount--;
 				// pretend the result went over the wire... (invoke .toJSON on objects...)
-				const wireResult = simulateWireTransfer(result, isFancy);
+				const wireResult = simulateWireTransfer(result);
 				return wireResult;
 			}, err => {
 				this._callCount--;
-				return TPromise.wrapError(err);
+				return Promise.reject(err);
 			});
 		});
 	}
@@ -128,13 +130,9 @@ export class TestRPCProtocol implements IRPCProtocol {
 	}
 }
 
-function simulateWireTransfer<T>(obj: T, isFancy: boolean): T {
+function simulateWireTransfer<T>(obj: T): T {
 	if (!obj) {
 		return obj;
 	}
-	return (
-		isFancy
-			? marshalling.parse(marshalling.stringify(obj))
-			: JSON.parse(JSON.stringify(obj))
-	);
+	return JSON.parse(JSON.stringify(obj));
 }

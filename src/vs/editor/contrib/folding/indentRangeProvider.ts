@@ -3,29 +3,49 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-'use strict';
-
 import { ITextModel } from 'vs/editor/common/model';
 import { FoldingMarkers } from 'vs/editor/common/modes/languageConfiguration';
-import { FoldingRanges, MAX_LINE_NUMBER } from 'vs/editor/contrib/folding/foldingRanges';
+import { FoldingRegions, MAX_LINE_NUMBER } from 'vs/editor/contrib/folding/foldingRanges';
 import { TextModel } from 'vs/editor/common/model/textModel';
+import { RangeProvider } from './folding';
+import { LanguageConfigurationRegistry } from 'vs/editor/common/modes/languageConfigurationRegistry';
+import { CancellationToken } from 'vs/base/common/cancellation';
 
 const MAX_FOLDING_REGIONS_FOR_INDENT_LIMIT = 5000;
 
+export const ID_INDENT_PROVIDER = 'indent';
+
+export class IndentRangeProvider implements RangeProvider {
+	readonly id = ID_INDENT_PROVIDER;
+
+	constructor(private readonly editorModel: ITextModel) {
+	}
+
+	dispose() {
+	}
+
+	compute(cancelationToken: CancellationToken): Promise<FoldingRegions> {
+		let foldingRules = LanguageConfigurationRegistry.getFoldingRules(this.editorModel.getLanguageIdentifier().id);
+		let offSide = foldingRules && !!foldingRules.offSide;
+		let markers = foldingRules && foldingRules.markers;
+		return Promise.resolve(computeRanges(this.editorModel, offSide, markers));
+	}
+}
+
 // public only for testing
 export class RangesCollector {
-	private _startIndexes: number[];
-	private _endIndexes: number[];
-	private _indentOccurrences: number[];
+	private readonly _startIndexes: number[];
+	private readonly _endIndexes: number[];
+	private readonly _indentOccurrences: number[];
 	private _length: number;
-	private _FoldingRangesLimit: number;
+	private readonly _foldingRangesLimit: number;
 
-	constructor(FoldingRangesLimit: number) {
+	constructor(foldingRangesLimit: number) {
 		this._startIndexes = [];
 		this._endIndexes = [];
 		this._indentOccurrences = [];
 		this._length = 0;
-		this._FoldingRangesLimit = FoldingRangesLimit;
+		this._foldingRangesLimit = foldingRangesLimit;
 	}
 
 	public insertFirst(startLineNumber: number, endLineNumber: number, indent: number) {
@@ -42,7 +62,7 @@ export class RangesCollector {
 	}
 
 	public toIndentRanges(model: ITextModel) {
-		if (this._length <= this._FoldingRangesLimit) {
+		if (this._length <= this._foldingRangesLimit) {
 			// reverse and create arrays of the exact length
 			let startIndexes = new Uint32Array(this._length);
 			let endIndexes = new Uint32Array(this._length);
@@ -50,14 +70,14 @@ export class RangesCollector {
 				startIndexes[k] = this._startIndexes[i];
 				endIndexes[k] = this._endIndexes[i];
 			}
-			return new FoldingRanges(startIndexes, endIndexes);
+			return new FoldingRegions(startIndexes, endIndexes);
 		} else {
 			let entries = 0;
 			let maxIndent = this._indentOccurrences.length;
 			for (let i = 0; i < this._indentOccurrences.length; i++) {
 				let n = this._indentOccurrences[i];
 				if (n) {
-					if (n + entries > this._FoldingRangesLimit) {
+					if (n + entries > this._foldingRangesLimit) {
 						maxIndent = i;
 						break;
 					}
@@ -66,47 +86,54 @@ export class RangesCollector {
 			}
 			const tabSize = model.getOptions().tabSize;
 			// reverse and create arrays of the exact length
-			let startIndexes = new Uint32Array(entries);
-			let endIndexes = new Uint32Array(entries);
+			let startIndexes = new Uint32Array(this._foldingRangesLimit);
+			let endIndexes = new Uint32Array(this._foldingRangesLimit);
 			for (let i = this._length - 1, k = 0; i >= 0; i--) {
 				let startIndex = this._startIndexes[i];
 				let lineContent = model.getLineContent(startIndex);
 				let indent = TextModel.computeIndentLevel(lineContent, tabSize);
-				if (indent < maxIndent) {
+				if (indent < maxIndent || (indent === maxIndent && entries++ < this._foldingRangesLimit)) {
 					startIndexes[k] = startIndex;
 					endIndexes[k] = this._endIndexes[i];
 					k++;
 				}
 			}
-			return new FoldingRanges(startIndexes, endIndexes);
+			return new FoldingRegions(startIndexes, endIndexes);
 		}
 
 	}
 }
 
 
-interface PreviousRegion { indent: number; line: number; marker: boolean; }
+interface PreviousRegion {
+	indent: number; // indent or -2 if a marker
+	endAbove: number; // end line number for the region above
+	line: number; // start line of the region. Only used for marker regions.
+}
 
-export function computeRanges(model: ITextModel, offSide: boolean, markers?: FoldingMarkers, FoldingRangesLimit = MAX_FOLDING_REGIONS_FOR_INDENT_LIMIT): FoldingRanges {
+export function computeRanges(model: ITextModel, offSide: boolean, markers?: FoldingMarkers, foldingRangesLimit = MAX_FOLDING_REGIONS_FOR_INDENT_LIMIT): FoldingRegions {
 	const tabSize = model.getOptions().tabSize;
-	let result = new RangesCollector(FoldingRangesLimit);
+	let result = new RangesCollector(foldingRangesLimit);
 
-	let pattern = void 0;
+	let pattern: RegExp | undefined = undefined;
 	if (markers) {
 		pattern = new RegExp(`(${markers.start.source})|(?:${markers.end.source})`);
 	}
 
 	let previousRegions: PreviousRegion[] = [];
-	previousRegions.push({ indent: -1, line: model.getLineCount() + 1, marker: false }); // sentinel, to make sure there's at least one entry
+	let line = model.getLineCount() + 1;
+	previousRegions.push({ indent: -1, endAbove: line, line }); // sentinel, to make sure there's at least one entry
 
 	for (let line = model.getLineCount(); line > 0; line--) {
 		let lineContent = model.getLineContent(line);
 		let indent = TextModel.computeIndentLevel(lineContent, tabSize);
 		let previous = previousRegions[previousRegions.length - 1];
 		if (indent === -1) {
-			if (offSide && !previous.marker) {
-				// for offSide languages, empty lines are associated to the next block
-				previous.line = line;
+			if (offSide) {
+				// for offSide languages, empty lines are associated to the previous block
+				// note: the next block is already written to the results, so this only
+				// impacts the end position of the block before
+				previous.endAbove = line;
 			}
 			continue; // only whitespace
 		}
@@ -116,7 +143,7 @@ export function computeRanges(model: ITextModel, offSide: boolean, markers?: Fol
 			if (m[1]) { // start pattern match
 				// discard all regions until the folding pattern
 				let i = previousRegions.length - 1;
-				while (i > 0 && !previousRegions[i].marker) {
+				while (i > 0 && previousRegions[i].indent !== -2) {
 					i--;
 				}
 				if (i > 0) {
@@ -125,15 +152,15 @@ export function computeRanges(model: ITextModel, offSide: boolean, markers?: Fol
 
 					// new folding range from pattern, includes the end line
 					result.insertFirst(line, previous.line, indent);
-					previous.marker = false;
-					previous.indent = indent;
 					previous.line = line;
+					previous.indent = indent;
+					previous.endAbove = line;
 					continue;
 				} else {
 					// no end marker found, treat line as a regular line
 				}
 			} else { // end pattern match
-				previousRegions.push({ indent: -2, line, marker: true });
+				previousRegions.push({ indent: -2, endAbove: line, line });
 				continue;
 			}
 		}
@@ -145,16 +172,16 @@ export function computeRanges(model: ITextModel, offSide: boolean, markers?: Fol
 			} while (previous.indent > indent);
 
 			// new folding range
-			let endLineNumber = previous.line - 1;
+			let endLineNumber = previous.endAbove - 1;
 			if (endLineNumber - line >= 1) { // needs at east size 1
 				result.insertFirst(line, endLineNumber, indent);
 			}
 		}
 		if (previous.indent === indent) {
-			previous.line = line;
+			previous.endAbove = line;
 		} else { // previous.indent < indent
 			// new region with a bigger indent
-			previousRegions.push({ indent, line, marker: false });
+			previousRegions.push({ indent, endAbove: line, line });
 		}
 	}
 	return result.toIndentRanges(model);

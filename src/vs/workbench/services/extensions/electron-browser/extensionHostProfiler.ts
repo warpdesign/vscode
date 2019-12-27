@@ -3,56 +3,48 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-'use strict';
-
-import { IExtensionService, IExtensionDescription, ProfileSession, IExtensionHostProfile, ProfileSegmentId } from 'vs/platform/extensions/common/extensions';
-import { TPromise } from 'vs/base/common/winjs.base';
-import { localize } from 'vs/nls';
-import { TernarySearchTree } from 'vs/base/common/map';
-import { realpathSync } from 'vs/base/node/extfs';
-import { CommandsRegistry } from 'vs/platform/commands/common/commands';
-import { IStatusbarService, StatusbarAlignment } from 'vs/platform/statusbar/common/statusbar';
-import { writeFile } from 'vs/base/node/pfs';
-import * as path from 'path';
-import { IEnvironmentService } from 'vs/platform/environment/common/environment';
-import { setTimeout } from 'timers';
 import { Profile, ProfileNode } from 'v8-inspect-profiler';
+import { TernarySearchTree } from 'vs/base/common/map';
+import { realpathSync } from 'vs/base/node/extpath';
+import { IExtensionHostProfile, IExtensionService, ProfileSegmentId, ProfileSession } from 'vs/workbench/services/extensions/common/extensions';
+import { IExtensionDescription } from 'vs/platform/extensions/common/extensions';
+import { withNullAsUndefined } from 'vs/base/common/types';
+import { Schemas } from 'vs/base/common/network';
+import { URI } from 'vs/base/common/uri';
 
 export class ExtensionHostProfiler {
 
 	constructor(private readonly _port: number, @IExtensionService private readonly _extensionService: IExtensionService) {
 	}
 
-	public start(): TPromise<ProfileSession> {
-		return TPromise.wrap(import('v8-inspect-profiler')).then(profiler => {
-			return profiler.startProfiling({ port: this._port }).then(session => {
-				return {
-					stop: () => {
-						return TPromise.wrap(session.stop()).then(profile => {
-							return this._extensionService.getExtensions().then(extensions => {
-								return this.distill(profile.profile, extensions);
-							});
-						});
-					}
-				};
-			});
-		});
+	public async start(): Promise<ProfileSession> {
+		const profiler = await import('v8-inspect-profiler');
+		const session = await profiler.startProfiling({ port: this._port, checkForPaused: true });
+		return {
+			stop: async () => {
+				const profile = await session.stop();
+				const extensions = await this._extensionService.getExtensions();
+				return this.distill((profile as any).profile, extensions);
+			}
+		};
 	}
 
 	private distill(profile: Profile, extensions: IExtensionDescription[]): IExtensionHostProfile {
 		let searchTree = TernarySearchTree.forPaths<IExtensionDescription>();
 		for (let extension of extensions) {
-			searchTree.set(realpathSync(extension.extensionFolderPath), extension);
+			if (extension.extensionLocation.scheme === Schemas.file) {
+				searchTree.set(URI.file(realpathSync(extension.extensionLocation.fsPath)).toString(), extension);
+			}
 		}
 
 		let nodes = profile.nodes;
 		let idsToNodes = new Map<number, ProfileNode>();
-		let idsToSegmentId = new Map<number, ProfileSegmentId>();
+		let idsToSegmentId = new Map<number, ProfileSegmentId | null>();
 		for (let node of nodes) {
 			idsToNodes.set(node.id, node);
 		}
 
-		function visit(node: ProfileNode, segmentId: ProfileSegmentId) {
+		function visit(node: ProfileNode, segmentId: ProfileSegmentId | null) {
 			if (!segmentId) {
 				switch (node.callFrame.functionName) {
 					case '(root)':
@@ -68,28 +60,36 @@ export class ExtensionHostProfiler {
 						break;
 				}
 			} else if (segmentId === 'self' && node.callFrame.url) {
-				let extension = searchTree.findSubstr(node.callFrame.url);
+				let extension: IExtensionDescription | undefined;
+				try {
+					extension = searchTree.findSubstr(URI.parse(node.callFrame.url).toString());
+				} catch {
+					// ignore
+				}
 				if (extension) {
-					segmentId = extension.id;
+					segmentId = extension.identifier.value;
 				}
 			}
 			idsToSegmentId.set(node.id, segmentId);
 
 			if (node.children) {
-				for (let child of node.children) {
-					visit(idsToNodes.get(child), segmentId);
+				for (const child of node.children) {
+					const childNode = idsToNodes.get(child);
+					if (childNode) {
+						visit(childNode, segmentId);
+					}
 				}
 			}
 		}
 		visit(nodes[0], null);
 
-		let samples = profile.samples;
-		let timeDeltas = profile.timeDeltas;
+		const samples = profile.samples || [];
+		let timeDeltas = profile.timeDeltas || [];
 		let distilledDeltas: number[] = [];
 		let distilledIds: ProfileSegmentId[] = [];
 
 		let currSegmentTime = 0;
-		let currSegmentId = void 0;
+		let currSegmentId: string | undefined;
 		for (let i = 0; i < samples.length; i++) {
 			let id = samples[i];
 			let segmentId = idsToSegmentId.get(id);
@@ -98,7 +98,7 @@ export class ExtensionHostProfiler {
 					distilledIds.push(currSegmentId);
 					distilledDeltas.push(currSegmentTime);
 				}
-				currSegmentId = segmentId;
+				currSegmentId = withNullAsUndefined(segmentId);
 				currSegmentTime = 0;
 			}
 			currSegmentTime += timeDeltas[i];
@@ -107,9 +107,6 @@ export class ExtensionHostProfiler {
 			distilledIds.push(currSegmentId);
 			distilledDeltas.push(currSegmentTime);
 		}
-		idsToNodes = null;
-		idsToSegmentId = null;
-		searchTree = null;
 
 		return {
 			startTime: profile.startTime,
@@ -128,27 +125,3 @@ export class ExtensionHostProfiler {
 		};
 	}
 }
-
-
-CommandsRegistry.registerCommand('exthost.profile.start', async accessor => {
-	const statusbarService = accessor.get(IStatusbarService);
-	const extensionService = accessor.get(IExtensionService);
-	const environmentService = accessor.get(IEnvironmentService);
-
-	const handle = statusbarService.addEntry({ text: localize('message', "$(zap) Profiling Extension Host...") }, StatusbarAlignment.LEFT);
-
-	extensionService.startExtensionHostProfile().then(session => {
-		setTimeout(() => {
-			session.stop().then(result => {
-				result.getAggregatedTimes().forEach((val, index) => {
-					console.log(`${index} : ${Math.round(val / 1000)} ms`);
-				});
-				let profilePath = path.join(environmentService.userHome, 'extHostProfile.cpuprofile');
-				console.log(`Saving profile at ${profilePath}`);
-				return writeFile(profilePath, JSON.stringify(result.data));
-			}).then(() => {
-				handle.dispose();
-			});
-		}, 5000);
-	});
-});

@@ -2,20 +2,20 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-'use strict';
 
-import * as editorCommon from 'vs/editor/common/editorCommon';
-import { ViewPart } from 'vs/editor/browser/view/viewPart';
-import { ViewContext } from 'vs/editor/common/view/viewContext';
-import { RenderingContext, RestrictedRenderingContext } from 'vs/editor/common/view/renderingContext';
-import { Position } from 'vs/editor/common/core/position';
-import { TokenizationRegistry } from 'vs/editor/common/modes';
-import { IDisposable } from 'vs/base/common/lifecycle';
-import * as viewEvents from 'vs/editor/common/view/viewEvents';
-import { editorOverviewRulerBorder, editorCursorForeground } from 'vs/editor/common/view/editorColorRegistry';
-import { Color } from 'vs/base/common/color';
-import { ITheme } from 'vs/platform/theme/common/themeService';
 import { FastDomNode, createFastDomNode } from 'vs/base/browser/fastDomNode';
+import { Color } from 'vs/base/common/color';
+import { IDisposable } from 'vs/base/common/lifecycle';
+import { ViewPart } from 'vs/editor/browser/view/viewPart';
+import { Position } from 'vs/editor/common/core/position';
+import { IConfiguration } from 'vs/editor/common/editorCommon';
+import { TokenizationRegistry } from 'vs/editor/common/modes';
+import { editorCursorForeground, editorOverviewRulerBorder } from 'vs/editor/common/view/editorColorRegistry';
+import { RenderingContext, RestrictedRenderingContext } from 'vs/editor/common/view/renderingContext';
+import { ViewContext } from 'vs/editor/common/view/viewContext';
+import * as viewEvents from 'vs/editor/common/view/viewEvents';
+import { ITheme } from 'vs/platform/theme/common/themeService';
+import { EditorOption } from 'vs/editor/common/config/editorOptions';
 
 class Settings {
 
@@ -24,13 +24,13 @@ class Settings {
 	public readonly overviewRulerLanes: number;
 
 	public readonly renderBorder: boolean;
-	public readonly borderColor: string;
+	public readonly borderColor: string | null;
 
 	public readonly hideCursor: boolean;
-	public readonly cursorColor: string;
+	public readonly cursorColor: string | null;
 
 	public readonly themeType: 'light' | 'dark' | 'hc';
-	public readonly backgroundColor: string;
+	public readonly backgroundColor: string | null;
 
 	public readonly top: number;
 	public readonly right: number;
@@ -42,26 +42,34 @@ class Settings {
 	public readonly x: number[];
 	public readonly w: number[];
 
-	constructor(config: editorCommon.IConfiguration, theme: ITheme) {
-		this.lineHeight = config.editor.lineHeight;
-		this.pixelRatio = config.editor.pixelRatio;
-		this.overviewRulerLanes = config.editor.viewInfo.overviewRulerLanes;
+	constructor(config: IConfiguration, theme: ITheme) {
+		const options = config.options;
+		this.lineHeight = options.get(EditorOption.lineHeight);
+		this.pixelRatio = options.get(EditorOption.pixelRatio);
+		this.overviewRulerLanes = options.get(EditorOption.overviewRulerLanes);
 
-		this.renderBorder = config.editor.viewInfo.overviewRulerBorder;
+		this.renderBorder = options.get(EditorOption.overviewRulerBorder);
 		const borderColor = theme.getColor(editorOverviewRulerBorder);
 		this.borderColor = borderColor ? borderColor.toString() : null;
 
-		this.hideCursor = config.editor.viewInfo.hideCursorInOverviewRuler;
+		this.hideCursor = options.get(EditorOption.hideCursorInOverviewRuler);
 		const cursorColor = theme.getColor(editorCursorForeground);
 		this.cursorColor = cursorColor ? cursorColor.transparent(0.7).toString() : null;
 
 		this.themeType = theme.type;
 
-		const minimapEnabled = config.editor.viewInfo.minimap.enabled;
+		const minimapOpts = options.get(EditorOption.minimap);
+		const minimapEnabled = minimapOpts.enabled;
+		const minimapSide = minimapOpts.side;
 		const backgroundColor = (minimapEnabled ? TokenizationRegistry.getDefaultBackground() : null);
-		this.backgroundColor = (backgroundColor ? Color.Format.CSS.formatHex(backgroundColor) : null);
+		if (backgroundColor === null || minimapSide === 'left') {
+			this.backgroundColor = null;
+		} else {
+			this.backgroundColor = Color.Format.CSS.formatHex(backgroundColor);
+		}
 
-		const position = config.editor.layoutInfo.overviewRuler;
+		const layoutInfo = options.get(EditorOption.layoutInfo);
+		const position = layoutInfo.overviewRuler;
 		this.top = position.top;
 		this.right = position.right;
 		this.domWidth = position.width;
@@ -197,7 +205,7 @@ export class DecorationsOverviewRuler extends ViewPart {
 
 	private readonly _tokensColorTrackerListener: IDisposable;
 	private readonly _domNode: FastDomNode<HTMLCanvasElement>;
-	private _settings: Settings;
+	private _settings!: Settings;
 	private _cursorPositions: Position[];
 
 	constructor(context: ViewContext) {
@@ -207,8 +215,9 @@ export class DecorationsOverviewRuler extends ViewPart {
 		this._domNode.setClassName('decorationsOverviewRuler');
 		this._domNode.setPosition('absolute');
 		this._domNode.setLayerHinting(true);
+		this._domNode.setContain('strict');
+		this._domNode.setAttribute('aria-hidden', 'true');
 
-		this._settings = null;
 		this._updateSettings(false);
 
 		this._tokensColorTrackerListener = TokenizationRegistry.onDidChange((e) => {
@@ -227,7 +236,7 @@ export class DecorationsOverviewRuler extends ViewPart {
 
 	private _updateSettings(renderNow: boolean): boolean {
 		const newSettings = new Settings(this._context.configuration, this._context.theme);
-		if (this._settings !== null && this._settings.equals(newSettings)) {
+		if (this._settings && this._settings.equals(newSettings)) {
 			// nothing to do
 			return false;
 		}
@@ -305,7 +314,7 @@ export class DecorationsOverviewRuler extends ViewPart {
 		const minDecorationHeight = (Constants.MIN_DECORATION_HEIGHT * this._settings.pixelRatio) | 0;
 		const halfMinDecorationHeight = (minDecorationHeight / 2) | 0;
 
-		const canvasCtx = this._domNode.domNode.getContext('2d');
+		const canvasCtx = this._domNode.domNode.getContext('2d')!;
 		if (this._settings.backgroundColor === null) {
 			canvasCtx.clearRect(0, 0, canvasWidth, canvasHeight);
 		} else {
@@ -336,7 +345,7 @@ export class DecorationsOverviewRuler extends ViewPart {
 
 				let y1 = (viewLayout.getVerticalOffsetForLineNumber(startLineNumber) * heightRatio) | 0;
 				let y2 = ((viewLayout.getVerticalOffsetForLineNumber(endLineNumber) + lineHeight) * heightRatio) | 0;
-				let height = y2 - y1;
+				const height = y2 - y1;
 				if (height < minDecorationHeight) {
 					let yCenter = ((y1 + y2) / 2) | 0;
 					if (yCenter < halfMinDecorationHeight) {
@@ -367,7 +376,7 @@ export class DecorationsOverviewRuler extends ViewPart {
 		}
 
 		// Draw cursors
-		if (!this._settings.hideCursor) {
+		if (!this._settings.hideCursor && this._settings.cursorColor) {
 			const cursorHeight = (2 * this._settings.pixelRatio) | 0;
 			const halfCursorHeight = (cursorHeight / 2) | 0;
 			const cursorX = this._settings.x[OverviewRulerLane.Full];

@@ -2,198 +2,244 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-'use strict';
 
-import Severity from 'vs/base/common/severity';
-import { TPromise } from 'vs/base/common/winjs.base';
-import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
-import { IExtensionPoint } from 'vs/platform/extensions/common/extensionsRegistry';
-import Event from 'vs/base/common/event';
-
-export interface IExtensionDescription {
-	readonly id: string;
-	readonly name: string;
-	readonly uuid?: string;
-	readonly displayName?: string;
-	readonly version: string;
-	readonly publisher: string;
-	readonly isBuiltin: boolean;
-	readonly extensionFolderPath: string;
-	readonly extensionDependencies?: string[];
-	readonly activationEvents?: string[];
-	readonly engines: {
-		vscode: string;
-	};
-	readonly main?: string;
-	readonly contributes?: { [point: string]: any; };
-	readonly keywords?: string[];
-	readonly repository?: {
-		url: string;
-	};
-	enableProposedApi?: boolean;
-}
+import * as strings from 'vs/base/common/strings';
+import { ILocalization } from 'vs/platform/localizations/common/localizations';
+import { URI } from 'vs/base/common/uri';
 
 export const MANIFEST_CACHE_FOLDER = 'CachedExtensions';
 export const USER_MANIFEST_CACHE_FILE = 'user';
 export const BUILTIN_MANIFEST_CACHE_FILE = 'builtin';
 
-export const IExtensionService = createDecorator<IExtensionService>('extensionService');
-
-export interface IMessage {
-	type: Severity;
-	message: string;
-	source: string;
-	extensionId: string;
-	extensionPointId: string;
+export interface ICommand {
+	command: string;
+	title: string;
+	category?: string;
 }
 
-export interface IExtensionsStatus {
-	messages: IMessage[];
-	activationTimes: ActivationTimes;
-	runtimeErrors: Error[];
+export interface IConfigurationProperty {
+	description: string;
+	type: string | string[];
+	default?: any;
+}
+
+export interface IConfiguration {
+	properties: { [key: string]: IConfigurationProperty; };
+}
+
+export interface IDebugger {
+	label?: string;
+	type: string;
+	runtime?: string;
+}
+
+export interface IGrammar {
+	language: string;
+}
+
+export interface IJSONValidation {
+	fileMatch: string;
+	url: string;
+}
+
+export interface IKeyBinding {
+	command: string;
+	key: string;
+	when?: string;
+	mac?: string;
+	linux?: string;
+	win?: string;
+}
+
+export interface ILanguage {
+	id: string;
+	extensions: string[];
+	aliases: string[];
+}
+
+export interface IMenu {
+	command: string;
+	alt?: string;
+	when?: string;
+	group?: string;
+}
+
+export interface ISnippet {
+	language: string;
+}
+
+export interface ITheme {
+	label: string;
+}
+
+export interface IViewContainer {
+	id: string;
+	title: string;
+}
+
+export interface IView {
+	id: string;
+	name: string;
+}
+
+export interface IColor {
+	id: string;
+	description: string;
+	defaults: { light: string, dark: string, highContrast: string };
+}
+
+export interface IWebviewEditor {
+	readonly viewType: string;
+	readonly priority: string;
+	readonly selector: readonly {
+		readonly filenamePattern?: string;
+	}[];
+}
+
+export interface ICodeActionContributionAction {
+	readonly kind: string;
+	readonly title: string;
+	readonly description?: string;
+}
+
+export interface ICodeActionContribution {
+	readonly languages: readonly string[];
+	readonly actions: readonly ICodeActionContributionAction[];
+}
+
+export interface IExtensionContributions {
+	commands?: ICommand[];
+	configuration?: IConfiguration | IConfiguration[];
+	debuggers?: IDebugger[];
+	grammars?: IGrammar[];
+	jsonValidation?: IJSONValidation[];
+	keybindings?: IKeyBinding[];
+	languages?: ILanguage[];
+	menus?: { [context: string]: IMenu[] };
+	snippets?: ISnippet[];
+	themes?: ITheme[];
+	iconThemes?: ITheme[];
+	viewsContainers?: { [location: string]: IViewContainer[] };
+	views?: { [location: string]: IView[] };
+	colors?: IColor[];
+	localizations?: ILocalization[];
+	readonly webviewEditors?: readonly IWebviewEditor[];
+	readonly codeActions?: readonly ICodeActionContribution[];
+}
+
+export type ExtensionKind = 'ui' | 'workspace' | 'web';
+
+export function isIExtensionIdentifier(thing: any): thing is IExtensionIdentifier {
+	return thing
+		&& typeof thing === 'object'
+		&& typeof thing.id === 'string'
+		&& (!thing.uuid || typeof thing.uuid === 'string');
+}
+
+export interface IExtensionIdentifier {
+	id: string;
+	uuid?: string;
+}
+
+export interface IExtensionManifest {
+	readonly name: string;
+	readonly displayName?: string;
+	readonly publisher: string;
+	readonly version: string;
+	readonly engines: { vscode: string };
+	readonly description?: string;
+	readonly main?: string;
+	readonly icon?: string;
+	readonly categories?: string[];
+	readonly keywords?: string[];
+	readonly activationEvents?: string[];
+	readonly extensionDependencies?: string[];
+	readonly extensionPack?: string[];
+	readonly extensionKind?: ExtensionKind | ExtensionKind[];
+	readonly contributes?: IExtensionContributions;
+	readonly repository?: { url: string; };
+	readonly bugs?: { url: string; };
+	readonly enableProposedApi?: boolean;
+	readonly api?: string;
+	readonly scripts?: { [key: string]: string; };
+}
+
+export const enum ExtensionType {
+	System,
+	User
+}
+
+export interface IExtension {
+	readonly type: ExtensionType;
+	readonly identifier: IExtensionIdentifier;
+	readonly manifest: IExtensionManifest;
+	readonly location: URI;
 }
 
 /**
- * e.g.
- * ```
- * {
- *    startTime: 1511954813493000,
- *    endTime: 1511954835590000,
- *    deltas: [ 100, 1500, 123456, 1500, 100000 ],
- *    ids: [ 'idle', 'self', 'extension1', 'self', 'idle' ]
- * }
- * ```
+ * **!Do not construct directly!**
+ *
+ * **!Only static methods because it gets serialized!**
+ *
+ * This represents the "canonical" version for an extension identifier. Extension ids
+ * have to be case-insensitive (due to the marketplace), but we must ensure case
+ * preservation because the extension API is already public at this time.
+ *
+ * For example, given an extension with the publisher `"Hello"` and the name `"World"`,
+ * its canonical extension identifier is `"Hello.World"`. This extension could be
+ * referenced in some other extension's dependencies using the string `"hello.world"`.
+ *
+ * To make matters more complicated, an extension can optionally have an UUID. When two
+ * extensions have the same UUID, they are considered equal even if their identifier is different.
  */
-export interface IExtensionHostProfile {
-	/**
-	 * Profiling start timestamp in microseconds.
-	 */
-	startTime: number;
-	/**
-	 * Profiling end timestamp in microseconds.
-	 */
-	endTime: number;
-	/**
-	 * Duration of segment in microseconds.
-	 */
-	deltas: number[];
-	/**
-	 * Segment identifier: extension id or one of the four known strings.
-	 */
-	ids: ProfileSegmentId[];
+export class ExtensionIdentifier {
+	public readonly value: string;
+	private readonly _lower: string;
 
-	/**
-	 * Get the information as a .cpuprofile.
-	 */
-	data: object;
-
-	/**
-	 * Get the aggregated time per segmentId
-	 */
-	getAggregatedTimes(): Map<ProfileSegmentId, number>;
-}
-
-/**
- * Extension id or one of the four known program states.
- */
-export type ProfileSegmentId = string | 'idle' | 'program' | 'gc' | 'self';
-
-export class ActivationTimes {
-	constructor(
-		public readonly startup: boolean,
-		public readonly codeLoadingTime: number,
-		public readonly activateCallTime: number,
-		public readonly activateResolvedTime: number,
-		public readonly activationEvent: string
-	) {
-	}
-}
-
-export class ExtensionPointContribution<T> {
-	readonly description: IExtensionDescription;
-	readonly value: T;
-
-	constructor(description: IExtensionDescription, value: T) {
-		this.description = description;
+	constructor(value: string) {
 		this.value = value;
+		this._lower = value.toLowerCase();
+	}
+
+	public static equals(a: ExtensionIdentifier | string | null | undefined, b: ExtensionIdentifier | string | null | undefined) {
+		if (typeof a === 'undefined' || a === null) {
+			return (typeof b === 'undefined' || b === null);
+		}
+		if (typeof b === 'undefined' || b === null) {
+			return false;
+		}
+		if (typeof a === 'string' || typeof b === 'string') {
+			// At least one of the arguments is an extension id in string form,
+			// so we have to use the string comparison which ignores case.
+			let aValue = (typeof a === 'string' ? a : a.value);
+			let bValue = (typeof b === 'string' ? b : b.value);
+			return strings.equalsIgnoreCase(aValue, bValue);
+		}
+
+		// Now we know both arguments are ExtensionIdentifier
+		return (a._lower === b._lower);
+	}
+
+	/**
+	 * Gives the value by which to index (for equality).
+	 */
+	public static toKey(id: ExtensionIdentifier | string): string {
+		if (typeof id === 'string') {
+			return id.toLowerCase();
+		}
+		return id._lower;
 	}
 }
 
-export interface IExtensionHostInformation {
-	inspectPort: number;
+export interface IExtensionDescription extends IExtensionManifest {
+	readonly identifier: ExtensionIdentifier;
+	readonly uuid?: string;
+	readonly isBuiltin: boolean;
+	readonly isUnderDevelopment: boolean;
+	readonly extensionLocation: URI;
+	enableProposedApi?: boolean;
 }
 
-export interface IExtensionService {
-	_serviceBrand: any;
-
-	/**
-	 * An event emitted when extensions are registered after their extension points got handled.
-	 *
-	 * This event will also fire on startup to signal the installed extensions.
-	 *
-	 * @returns the extensions that got registered
-	 */
-	onDidRegisterExtensions: Event<IExtensionDescription[]>;
-
-	/**
-	 * @event
-	 * Fired when extensions status changes.
-	 * The event contains the ids of the extensions that have changed.
-	 */
-	onDidChangeExtensionsStatus: Event<string[]>;
-
-	/**
-	 * Send an activation event and activate interested extensions.
-	 */
-	activateByEvent(activationEvent: string): TPromise<void>;
-
-	/**
-	 * An promise that resolves when the installed extensions are registered after
-	 * their extension points got handled.
-	 */
-	whenInstalledExtensionsRegistered(): TPromise<boolean>;
-
-	/**
-	 * Return all registered extensions
-	 */
-	getExtensions(): TPromise<IExtensionDescription[]>;
-
-	/**
-	 * Read all contributions to an extension point.
-	 */
-	readExtensionPointContributions<T>(extPoint: IExtensionPoint<T>): TPromise<ExtensionPointContribution<T>[]>;
-
-	/**
-	 * Get information about extensions status.
-	 */
-	getExtensionsStatus(): { [id: string]: IExtensionsStatus };
-
-	/**
-	 * Begin an extension host process profile session.
-	 */
-	startExtensionHostProfile(): TPromise<ProfileSession>;
-
-	/**
-	 * Restarts the extension host.
-	 */
-	restartExtensionHost(): void;
-
-	/**
-	 * Starts the extension host.
-	 */
-	startExtensionHost(): void;
-
-	/**
-	 * Stops the extension host.
-	 */
-	stopExtensionHost(): void;
-
-	/**
-	 *
-	 */
-	getExtensionHostInformation(): IExtensionHostInformation;
-}
-
-export interface ProfileSession {
-	stop(): TPromise<IExtensionHostProfile>;
+export function isLanguagePackExtension(manifest: IExtensionManifest): boolean {
+	return manifest.contributes && manifest.contributes.localizations ? manifest.contributes.localizations.length > 0 : false;
 }

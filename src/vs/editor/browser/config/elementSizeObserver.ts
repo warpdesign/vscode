@@ -2,27 +2,26 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-'use strict';
 
 import { Disposable } from 'vs/base/common/lifecycle';
 import { IDimension } from 'vs/editor/common/editorCommon';
 
 export class ElementSizeObserver extends Disposable {
 
-	private referenceDomElement: HTMLElement;
-	private measureReferenceDomElementToken: number;
-	private changeCallback: () => void;
+	private readonly referenceDomElement: HTMLElement | null;
+	private measureReferenceDomElementToken: any;
+	private readonly changeCallback: () => void;
 	private width: number;
 	private height: number;
 
-	constructor(referenceDomElement: HTMLElement, changeCallback: () => void) {
+	constructor(referenceDomElement: HTMLElement | null, dimension: IDimension | undefined, changeCallback: () => void) {
 		super();
 		this.referenceDomElement = referenceDomElement;
 		this.changeCallback = changeCallback;
 		this.measureReferenceDomElementToken = -1;
 		this.width = -1;
 		this.height = -1;
-		this.measureReferenceDomElement(false);
+		this.measureReferenceDomElement(false, dimension);
 	}
 
 	public dispose(): void {

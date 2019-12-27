@@ -3,15 +3,22 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-'use strict';
+import * as net from 'net';
 
-import net = require('net');
+/**
+ * @returns Returns a random port between 1025 and 65535.
+ */
+export function randomPort(): number {
+	const min = 1025;
+	const max = 65535;
+	return min + Math.floor((max - min) * Math.random());
+}
 
 /**
  * Given a start point and a max number of retries, will find a port that
  * is openable. Will return 0 in case no free port can be found.
  */
-export function findFreePort(startPort: number, giveUpAfter: number, timeout: number): Thenable<number> {
+export function findFreePort(startPort: number, giveUpAfter: number, timeout: number): Promise<number> {
 	let done = false;
 
 	return new Promise(resolve => {

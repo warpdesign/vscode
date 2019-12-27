@@ -3,19 +3,20 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-'use strict';
-
 import 'vs/css!./clipboard';
 import * as nls from 'vs/nls';
-import { KeyCode, KeyMod } from 'vs/base/common/keyCodes';
 import * as browser from 'vs/base/browser/browser';
+import { KeyCode, KeyMod } from 'vs/base/common/keyCodes';
 import * as platform from 'vs/base/common/platform';
-import { ServicesAccessor } from 'vs/platform/instantiation/common/instantiation';
-import { ICodeEditorService } from 'vs/editor/browser/services/codeEditorService';
-import { registerEditorAction, IActionOptions, EditorAction, ICommandKeybindingsOptions } from 'vs/editor/browser/editorExtensions';
 import { CopyOptions } from 'vs/editor/browser/controller/textAreaInput';
-import { EditorContextKeys } from 'vs/editor/common/editorContextKeys';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
+import { EditorAction, IActionOptions, ICommandKeybindingsOptions, registerEditorAction } from 'vs/editor/browser/editorExtensions';
+import { ICodeEditorService } from 'vs/editor/browser/services/codeEditorService';
+import { EditorContextKeys } from 'vs/editor/common/editorContextKeys';
+import { MenuId } from 'vs/platform/actions/common/actions';
+import { ServicesAccessor } from 'vs/platform/instantiation/common/instantiation';
+import { KeybindingWeight } from 'vs/platform/keybinding/common/keybindingsRegistry';
+import { EditorOption } from 'vs/editor/common/config/editorOptions';
 
 const CLIPBOARD_CONTEXT_MENU_GROUP = '9_cutcopypaste';
 
@@ -32,7 +33,7 @@ type ExecCommand = 'cut' | 'copy' | 'paste';
 
 abstract class ExecCommandAction extends EditorAction {
 
-	private browserCommand: ExecCommand;
+	private readonly browserCommand: ExecCommand;
 
 	constructor(browserCommand: ExecCommand, opts: IActionOptions) {
 		super(opts);
@@ -42,7 +43,7 @@ abstract class ExecCommandAction extends EditorAction {
 	public runCommand(accessor: ServicesAccessor, args: any): void {
 		let focusedEditor = accessor.get(ICodeEditorService).getFocusedCodeEditor();
 		// Only if editor text focus (i.e. not if editor has widget focus).
-		if (focusedEditor && focusedEditor.isFocused()) {
+		if (focusedEditor && focusedEditor.hasTextFocus()) {
 			focusedEditor.trigger('keyboard', this.id, args);
 			return;
 		}
@@ -59,15 +60,16 @@ abstract class ExecCommandAction extends EditorAction {
 class ExecCommandCutAction extends ExecCommandAction {
 
 	constructor() {
-		let kbOpts: ICommandKeybindingsOptions = {
-			kbExpr: EditorContextKeys.textFocus,
+		let kbOpts: ICommandKeybindingsOptions | undefined = {
+			kbExpr: EditorContextKeys.textInputFocus,
 			primary: KeyMod.CtrlCmd | KeyCode.KEY_X,
-			win: { primary: KeyMod.CtrlCmd | KeyCode.KEY_X, secondary: [KeyMod.Shift | KeyCode.Delete] }
+			win: { primary: KeyMod.CtrlCmd | KeyCode.KEY_X, secondary: [KeyMod.Shift | KeyCode.Delete] },
+			weight: KeybindingWeight.EditorContrib
 		};
 		// Do not bind cut keybindings in the browser,
 		// since browsers do that for us and it avoids security prompts
 		if (!platform.isNative) {
-			kbOpts = null;
+			kbOpts = undefined;
 		}
 		super('cut', {
 			id: 'editor.action.clipboardCutAction',
@@ -75,15 +77,25 @@ class ExecCommandCutAction extends ExecCommandAction {
 			alias: 'Cut',
 			precondition: EditorContextKeys.writable,
 			kbOpts: kbOpts,
-			menuOpts: {
+			contextMenuOpts: {
 				group: CLIPBOARD_CONTEXT_MENU_GROUP,
+				order: 1
+			},
+			menuOpts: {
+				menuId: MenuId.MenubarEditMenu,
+				group: '2_ccp',
+				title: nls.localize({ key: 'miCut', comment: ['&& denotes a mnemonic'] }, "Cu&&t"),
 				order: 1
 			}
 		});
 	}
 
 	public run(accessor: ServicesAccessor, editor: ICodeEditor): void {
-		const emptySelectionClipboard = editor.getConfiguration().emptySelectionClipboard;
+		if (!editor.hasModel()) {
+			return;
+		}
+
+		const emptySelectionClipboard = editor.getOption(EditorOption.emptySelectionClipboard);
 
 		if (!emptySelectionClipboard && editor.getSelection().isEmpty()) {
 			return;
@@ -96,32 +108,43 @@ class ExecCommandCutAction extends ExecCommandAction {
 class ExecCommandCopyAction extends ExecCommandAction {
 
 	constructor() {
-		let kbOpts: ICommandKeybindingsOptions = {
-			kbExpr: EditorContextKeys.textFocus,
+		let kbOpts: ICommandKeybindingsOptions | undefined = {
+			kbExpr: EditorContextKeys.textInputFocus,
 			primary: KeyMod.CtrlCmd | KeyCode.KEY_C,
-			win: { primary: KeyMod.CtrlCmd | KeyCode.KEY_C, secondary: [KeyMod.CtrlCmd | KeyCode.Insert] }
+			win: { primary: KeyMod.CtrlCmd | KeyCode.KEY_C, secondary: [KeyMod.CtrlCmd | KeyCode.Insert] },
+			weight: KeybindingWeight.EditorContrib
 		};
 		// Do not bind copy keybindings in the browser,
 		// since browsers do that for us and it avoids security prompts
 		if (!platform.isNative) {
-			kbOpts = null;
+			kbOpts = undefined;
 		}
 
 		super('copy', {
 			id: 'editor.action.clipboardCopyAction',
 			label: nls.localize('actions.clipboard.copyLabel', "Copy"),
 			alias: 'Copy',
-			precondition: null,
+			precondition: undefined,
 			kbOpts: kbOpts,
-			menuOpts: {
+			contextMenuOpts: {
 				group: CLIPBOARD_CONTEXT_MENU_GROUP,
+				order: 2
+			},
+			menuOpts: {
+				menuId: MenuId.MenubarEditMenu,
+				group: '2_ccp',
+				title: nls.localize({ key: 'miCopy', comment: ['&& denotes a mnemonic'] }, "&&Copy"),
 				order: 2
 			}
 		});
 	}
 
 	public run(accessor: ServicesAccessor, editor: ICodeEditor): void {
-		const emptySelectionClipboard = editor.getConfiguration().emptySelectionClipboard;
+		if (!editor.hasModel()) {
+			return;
+		}
+
+		const emptySelectionClipboard = editor.getOption(EditorOption.emptySelectionClipboard);
 
 		if (!emptySelectionClipboard && editor.getSelection().isEmpty()) {
 			return;
@@ -134,15 +157,16 @@ class ExecCommandCopyAction extends ExecCommandAction {
 class ExecCommandPasteAction extends ExecCommandAction {
 
 	constructor() {
-		let kbOpts: ICommandKeybindingsOptions = {
-			kbExpr: EditorContextKeys.textFocus,
+		let kbOpts: ICommandKeybindingsOptions | undefined = {
+			kbExpr: EditorContextKeys.textInputFocus,
 			primary: KeyMod.CtrlCmd | KeyCode.KEY_V,
-			win: { primary: KeyMod.CtrlCmd | KeyCode.KEY_V, secondary: [KeyMod.Shift | KeyCode.Insert] }
+			win: { primary: KeyMod.CtrlCmd | KeyCode.KEY_V, secondary: [KeyMod.Shift | KeyCode.Insert] },
+			weight: KeybindingWeight.EditorContrib
 		};
 		// Do not bind paste keybindings in the browser,
 		// since browsers do that for us and it avoids security prompts
 		if (!platform.isNative) {
-			kbOpts = null;
+			kbOpts = undefined;
 		}
 
 		super('paste', {
@@ -151,8 +175,14 @@ class ExecCommandPasteAction extends ExecCommandAction {
 			alias: 'Paste',
 			precondition: EditorContextKeys.writable,
 			kbOpts: kbOpts,
-			menuOpts: {
+			contextMenuOpts: {
 				group: CLIPBOARD_CONTEXT_MENU_GROUP,
+				order: 3
+			},
+			menuOpts: {
+				menuId: MenuId.MenubarEditMenu,
+				group: '2_ccp',
+				title: nls.localize({ key: 'miPaste', comment: ['&& denotes a mnemonic'] }, "&&Paste"),
 				order: 3
 			}
 		});
@@ -166,16 +196,21 @@ class ExecCommandCopyWithSyntaxHighlightingAction extends ExecCommandAction {
 			id: 'editor.action.clipboardCopyWithSyntaxHighlightingAction',
 			label: nls.localize('actions.clipboard.copyWithSyntaxHighlightingLabel', "Copy With Syntax Highlighting"),
 			alias: 'Copy With Syntax Highlighting',
-			precondition: null,
+			precondition: undefined,
 			kbOpts: {
-				kbExpr: EditorContextKeys.textFocus,
-				primary: null
+				kbExpr: EditorContextKeys.textInputFocus,
+				primary: 0,
+				weight: KeybindingWeight.EditorContrib
 			}
 		});
 	}
 
 	public run(accessor: ServicesAccessor, editor: ICodeEditor): void {
-		const emptySelectionClipboard = editor.getConfiguration().emptySelectionClipboard;
+		if (!editor.hasModel()) {
+			return;
+		}
+
+		const emptySelectionClipboard = editor.getOption(EditorOption.emptySelectionClipboard);
 
 		if (!emptySelectionClipboard && editor.getSelection().isEmpty()) {
 			return;

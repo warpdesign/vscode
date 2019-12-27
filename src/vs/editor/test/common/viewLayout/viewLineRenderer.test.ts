@@ -2,16 +2,16 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-'use strict';
 
 import * as assert from 'assert';
-import { renderViewLine2 as renderViewLine, RenderLineInput, CharacterMapping } from 'vs/editor/common/viewLayout/viewLineRenderer';
-import { ViewLineToken, ViewLineTokens } from 'vs/editor/test/common/core/viewLineToken';
 import { CharCode } from 'vs/base/common/charCode';
+import * as strings from 'vs/base/common/strings';
+import { IViewLineTokens } from 'vs/editor/common/core/lineTokens';
 import { MetadataConsts } from 'vs/editor/common/modes';
 import { LineDecoration } from 'vs/editor/common/viewLayout/lineDecorations';
+import { CharacterMapping, RenderLineInput, renderViewLine2 as renderViewLine, LineRange } from 'vs/editor/common/viewLayout/viewLineRenderer';
 import { InlineDecorationType } from 'vs/editor/common/viewModel/viewModel';
-import { IViewLineTokens } from 'vs/editor/common/core/lineTokens';
+import { ViewLineToken, ViewLineTokens } from 'vs/editor/test/common/core/viewLineToken';
 
 function createViewLineTokens(viewLineTokens: ViewLineToken[]): IViewLineTokens {
 	return new ViewLineTokens(viewLineTokens);
@@ -28,7 +28,10 @@ suite('viewLineRenderer.renderLine', () => {
 	function assertCharacterReplacement(lineContent: string, tabSize: number, expected: string, expectedCharOffsetInPart: number[][], expectedPartLengts: number[]): void {
 		let _actual = renderViewLine(new RenderLineInput(
 			false,
+			true,
 			lineContent,
+			false,
+			strings.isBasicASCII(lineContent),
 			false,
 			0,
 			createViewLineTokens([new ViewLineToken(lineContent.length, 0)]),
@@ -38,7 +41,8 @@ suite('viewLineRenderer.renderLine', () => {
 			-1,
 			'none',
 			false,
-			false
+			false,
+			null
 		));
 
 		assert.equal(_actual.html, '<span><span class="mtk0">' + expected + '</span></span>');
@@ -74,7 +78,10 @@ suite('viewLineRenderer.renderLine', () => {
 	function assertParts(lineContent: string, tabSize: number, parts: ViewLineToken[], expected: string, expectedCharOffsetInPart: number[][], expectedPartLengts: number[]): void {
 		let _actual = renderViewLine(new RenderLineInput(
 			false,
+			true,
 			lineContent,
+			false,
+			true,
 			false,
 			0,
 			createViewLineTokens(parts),
@@ -84,7 +91,8 @@ suite('viewLineRenderer.renderLine', () => {
 			-1,
 			'none',
 			false,
-			false
+			false,
+			null
 		));
 
 		assert.equal(_actual.html, '<span>' + expected + '</span>');
@@ -110,7 +118,10 @@ suite('viewLineRenderer.renderLine', () => {
 	test('overflow', () => {
 		let _actual = renderViewLine(new RenderLineInput(
 			false,
+			true,
 			'Hello world!',
+			false,
+			true,
 			false,
 			0,
 			createViewLineTokens([
@@ -133,7 +144,8 @@ suite('viewLineRenderer.renderLine', () => {
 			6,
 			'boundary',
 			false,
-			false
+			false,
+			null
 		));
 
 		let expectedOutput = [
@@ -177,8 +189,8 @@ suite('viewLineRenderer.renderLine', () => {
 			createPart(48, 12),
 		]);
 		let expectedOutput = [
-			'<span class="vs-whitespace" style="width:40px">\u2192\u00a0\u00a0\u00a0</span>',
-			'<span class="vs-whitespace" style="width:40px">\u00b7\u00b7\u00b7\u00b7</span>',
+			'<span class="vs-whitespace" style="display:inline-block;width:40px">\u2192\u00a0\u00a0\u00a0</span>',
+			'<span class="vs-whitespace" style="display:inline-block;width:40px">\u00b7\u00b7\u00b7\u00b7</span>',
 			'<span class="mtk2">export</span>',
 			'<span class="mtk3">\u00a0</span>',
 			'<span class="mtk4">class</span>',
@@ -189,8 +201,8 @@ suite('viewLineRenderer.renderLine', () => {
 			'<span class="mtk9">\u00a0</span>',
 			'<span class="mtk10">//\u00a0</span>',
 			'<span class="mtk11">http://test.com</span>',
-			'<span class="vs-whitespace" style="width:20px">\u00b7\u00b7</span>',
-			'<span class="vs-whitespace" style="width:30px">\u00b7\u00b7\u00b7</span>'
+			'<span class="vs-whitespace" style="display:inline-block;width:20px">\u00b7\u00b7</span>',
+			'<span class="vs-whitespace" style="display:inline-block;width:30px">\u00b7\u00b7\u00b7</span>'
 		].join('');
 		let expectedOffsetsArr = [
 			[0],
@@ -211,7 +223,10 @@ suite('viewLineRenderer.renderLine', () => {
 
 		let _actual = renderViewLine(new RenderLineInput(
 			false,
+			true,
 			lineText,
+			false,
+			true,
 			false,
 			0,
 			lineParts,
@@ -221,7 +236,8 @@ suite('viewLineRenderer.renderLine', () => {
 			-1,
 			'boundary',
 			false,
-			false
+			false,
+			null
 		));
 
 		assert.equal(_actual.html, '<span>' + expectedOutput + '</span>');
@@ -270,7 +286,10 @@ suite('viewLineRenderer.renderLine', () => {
 
 		let _actual = renderViewLine(new RenderLineInput(
 			false,
+			true,
 			lineText,
+			false,
+			true,
 			false,
 			0,
 			lineParts,
@@ -280,7 +299,8 @@ suite('viewLineRenderer.renderLine', () => {
 			-1,
 			'none',
 			false,
-			false
+			false,
+			null
 		));
 
 		assert.equal(_actual.html, '<span>' + expectedOutput + '</span>');
@@ -329,7 +349,10 @@ suite('viewLineRenderer.renderLine', () => {
 
 		let _actual = renderViewLine(new RenderLineInput(
 			false,
+			true,
 			lineText,
+			false,
+			true,
 			false,
 			0,
 			lineParts,
@@ -339,7 +362,8 @@ suite('viewLineRenderer.renderLine', () => {
 			-1,
 			'none',
 			false,
-			false
+			false,
+			null
 		));
 
 		assert.equal(_actual.html, '<span>' + expectedOutput + '</span>');
@@ -365,7 +389,10 @@ suite('viewLineRenderer.renderLine', () => {
 
 		let _actual = renderViewLine(new RenderLineInput(
 			false,
+			true,
 			lineText,
+			false,
+			false,
 			true,
 			0,
 			lineParts,
@@ -375,7 +402,8 @@ suite('viewLineRenderer.renderLine', () => {
 			-1,
 			'none',
 			false,
-			false
+			false,
+			null
 		));
 
 		assert.equal(_actual.html, '<span>' + expectedOutput + '</span>');
@@ -392,7 +420,10 @@ suite('viewLineRenderer.renderLine', () => {
 			let lineParts = createViewLineTokens([createPart(lineText.length, 1)]);
 			let actual = renderViewLine(new RenderLineInput(
 				false,
+				true,
 				lineText,
+				false,
+				true,
 				false,
 				0,
 				lineParts,
@@ -402,7 +433,8 @@ suite('viewLineRenderer.renderLine', () => {
 				-1,
 				'none',
 				false,
-				false
+				false,
+				null
 			));
 			assert.equal(actual.html, '<span>' + expectedOutput.join('') + '</span>', message);
 		}
@@ -489,7 +521,10 @@ suite('viewLineRenderer.renderLine', () => {
 			let lineParts = createViewLineTokens([createPart(lineText.length, 1)]);
 			let actual = renderViewLine(new RenderLineInput(
 				false,
+				true,
 				lineText,
+				false,
+				true,
 				false,
 				0,
 				lineParts,
@@ -499,7 +534,8 @@ suite('viewLineRenderer.renderLine', () => {
 				-1,
 				'none',
 				false,
-				true
+				true,
+				null
 			));
 			assert.equal(actual.html, '<span>' + expectedOutput.join('') + '</span>', message);
 		}
@@ -510,7 +546,9 @@ suite('viewLineRenderer.renderLine', () => {
 				'101 chars',
 				_lineText.substr(0, 101),
 				[
-					'<span class="mtk1">This\u00a0is\u00a0just\u00a0a\u00a0long\u00a0line\u00a0that\u00a0contains\u00a0very\u00a0interesting\u00a0text.\u00a0This\u00a0is\u00a0just\u00a0a\u00a0long\u00a0line\u00a0that\u00a0contains\u00a0</span>',
+					'<span class="mtk1">This\u00a0is\u00a0just\u00a0a\u00a0long\u00a0line\u00a0that\u00a0contains\u00a0very\u00a0</span>',
+					'<span class="mtk1">interesting\u00a0text.\u00a0This\u00a0is\u00a0just\u00a0a\u00a0long\u00a0line\u00a0that\u00a0</span>',
+					'<span class="mtk1">contains\u00a0</span>',
 				]
 			);
 		}
@@ -522,7 +560,10 @@ suite('viewLineRenderer.renderLine', () => {
 		let lineParts = createViewLineTokens([createPart(lineText.length, 1)]);
 		let actual = renderViewLine(new RenderLineInput(
 			false,
+			true,
 			lineText,
+			false,
+			false,
 			false,
 			0,
 			lineParts,
@@ -532,14 +573,11 @@ suite('viewLineRenderer.renderLine', () => {
 			-1,
 			'none',
 			false,
-			false
+			false,
+			null
 		));
 		let expectedOutput = [
-			'<span class="mtk1">a𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷</span>',
-			'<span class="mtk1">𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷</span>',
-			'<span class="mtk1">𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷</span>',
-			'<span class="mtk1">𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷</span>',
-			'<span class="mtk1">𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷</span>',
+			'<span class="mtk1">a𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷𠮷</span>',
 		];
 		assert.equal(actual.html, '<span>' + expectedOutput.join('') + '</span>');
 	});
@@ -552,7 +590,10 @@ suite('viewLineRenderer.renderLine', () => {
 		];
 		let actual = renderViewLine(new RenderLineInput(
 			false,
+			true,
 			lineText,
+			false,
+			false,
 			true,
 			0,
 			lineParts,
@@ -562,7 +603,8 @@ suite('viewLineRenderer.renderLine', () => {
 			-1,
 			'none',
 			false,
-			false
+			false,
+			null
 		));
 		assert.equal(actual.html, '<span>' + expectedOutput.join('') + '</span>');
 		assert.equal(actual.containsRTL, true);
@@ -595,7 +637,10 @@ suite('viewLineRenderer.renderLine', () => {
 
 		let _actual = renderViewLine(new RenderLineInput(
 			true,
+			true,
 			lineText,
+			false,
+			true,
 			false,
 			4,
 			lineParts,
@@ -605,7 +650,8 @@ suite('viewLineRenderer.renderLine', () => {
 			-1,
 			'none',
 			false,
-			false
+			false,
+			null
 		));
 
 		assert.equal(_actual.html, '<span>' + expectedOutput + '</span>');
@@ -619,8 +665,7 @@ suite('viewLineRenderer.renderLine', () => {
 		for (let partIndex = 0; partIndex < expectedCharPartOffsets.length; partIndex++) {
 			const part = expectedCharPartOffsets[partIndex];
 
-			for (let i = 0; i < part.length; i++) {
-				const charIndex = part[i];
+			for (const charIndex of part) {
 				expectedCharAbsoluteOffset.push(currentPartAbsoluteOffset + charIndex);
 			}
 
@@ -640,8 +685,7 @@ suite('viewLineRenderer.renderLine', () => {
 		let charOffset = 0;
 		for (let partIndex = 0; partIndex < expected.length; partIndex++) {
 			let part = expected[partIndex];
-			for (let i = 0; i < part.length; i++) {
-				let charIndex = part[i];
+			for (const charIndex of part) {
 				// here
 				let _actualPartData = actual.charOffsetToPartData(charOffset);
 				let actualPartIndex = CharacterMapping.getPartIndex(_actualPartData);
@@ -672,10 +716,13 @@ suite('viewLineRenderer.renderLine', () => {
 
 suite('viewLineRenderer.renderLine 2', () => {
 
-	function testCreateLineParts(fontIsMonospace: boolean, lineContent: string, tokens: ViewLineToken[], fauxIndentLength: number, renderWhitespace: 'none' | 'boundary' | 'all', expected: string): void {
+	function testCreateLineParts(fontIsMonospace: boolean, lineContent: string, tokens: ViewLineToken[], fauxIndentLength: number, renderWhitespace: 'none' | 'boundary' | 'selection' | 'all', selections: LineRange[] | null, expected: string): void {
 		let actual = renderViewLine(new RenderLineInput(
 			fontIsMonospace,
+			true,
 			lineContent,
+			false,
+			true,
 			false,
 			fauxIndentLength,
 			createViewLineTokens(tokens),
@@ -685,7 +732,8 @@ suite('viewLineRenderer.renderLine 2', () => {
 			-1,
 			renderWhitespace,
 			false,
-			false
+			false,
+			selections
 		));
 
 		assert.deepEqual(actual.html, expected);
@@ -697,7 +745,10 @@ suite('viewLineRenderer.renderLine 2', () => {
 
 		let actual = renderViewLine(new RenderLineInput(
 			false,
+			true,
 			lineContent,
+			false,
+			true,
 			false,
 			0,
 			createViewLineTokens([createPart(21, 3)]),
@@ -707,7 +758,8 @@ suite('viewLineRenderer.renderLine 2', () => {
 			-1,
 			'none',
 			false,
-			false
+			false,
+			null
 		));
 
 		let expected = [
@@ -725,7 +777,10 @@ suite('viewLineRenderer.renderLine 2', () => {
 
 		let actual = renderViewLine(new RenderLineInput(
 			true,
+			true,
 			lineContent,
+			false,
+			true,
 			false,
 			0,
 			createViewLineTokens([
@@ -743,7 +798,8 @@ suite('viewLineRenderer.renderLine 2', () => {
 			-1,
 			'none',
 			false,
-			false
+			false,
+			null
 		));
 
 		let expected = [
@@ -770,6 +826,7 @@ suite('viewLineRenderer.renderLine 2', () => {
 			],
 			0,
 			'none',
+			null,
 			[
 				'<span>',
 				'<span class="mtk1">Hello\u00a0world!</span>',
@@ -787,6 +844,7 @@ suite('viewLineRenderer.renderLine 2', () => {
 			],
 			0,
 			'none',
+			null,
 			[
 				'<span>',
 				'<span class="mtk1">Hello\u00a0</span>',
@@ -806,12 +864,13 @@ suite('viewLineRenderer.renderLine 2', () => {
 			],
 			0,
 			'boundary',
+			null,
 			[
 				'<span>',
-				'<span class="vs-whitespace" style="width:40px">\u00b7\u00b7\u00b7\u00b7</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:40px">\u00b7\u00b7\u00b7\u00b7</span>',
 				'<span class="mtk2">He</span>',
 				'<span class="mtk3">llo\u00a0world!</span>',
-				'<span class="vs-whitespace" style="width:40px">\u00b7\u00b7\u00b7\u00b7</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:40px">\u00b7\u00b7\u00b7\u00b7</span>',
 				'</span>',
 			].join('')
 		);
@@ -827,14 +886,15 @@ suite('viewLineRenderer.renderLine 2', () => {
 			],
 			0,
 			'boundary',
+			null,
 			[
 				'<span>',
-				'<span class="vs-whitespace" style="width:40px">\u00b7\u00b7\u00b7\u00b7</span>',
-				'<span class="vs-whitespace" style="width:40px">\u00b7\u00b7\u00b7\u00b7</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:40px">\u00b7\u00b7\u00b7\u00b7</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:40px">\u00b7\u00b7\u00b7\u00b7</span>',
 				'<span class="mtk2">He</span>',
 				'<span class="mtk3">llo\u00a0world!</span>',
-				'<span class="vs-whitespace" style="width:40px">\u00b7\u00b7\u00b7\u00b7</span>',
-				'<span class="vs-whitespace" style="width:40px">\u00b7\u00b7\u00b7\u00b7</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:40px">\u00b7\u00b7\u00b7\u00b7</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:40px">\u00b7\u00b7\u00b7\u00b7</span>',
 				'</span>',
 			].join('')
 		);
@@ -850,13 +910,14 @@ suite('viewLineRenderer.renderLine 2', () => {
 			],
 			0,
 			'boundary',
+			null,
 			[
 				'<span>',
-				'<span class="vs-whitespace" style="width:40px">\u2192\u00a0\u00a0\u00a0</span>',
-				'<span class="vs-whitespace" style="width:40px">\u2192\u00a0\u00a0\u00a0</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:40px">\u2192\u00a0\u00a0\u00a0</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:40px">\u2192\u00a0\u00a0\u00a0</span>',
 				'<span class="mtk2">He</span>',
 				'<span class="mtk3">llo\u00a0world!</span>',
-				'<span class="vs-whitespace" style="width:40px">\u2192\u00a0\u00a0\u00a0</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:40px">\u2192\u00a0\u00a0\u00a0</span>',
 				'</span>',
 			].join('')
 		);
@@ -872,17 +933,18 @@ suite('viewLineRenderer.renderLine 2', () => {
 			],
 			0,
 			'boundary',
+			null,
 			[
 				'<span>',
-				'<span class="vs-whitespace" style="width:40px">\u00b7\u00b7\u2192\u00a0</span>',
-				'<span class="vs-whitespace" style="width:40px">\u2192\u00a0\u00a0\u00a0</span>',
-				'<span class="vs-whitespace" style="width:20px">\u00b7\u00b7</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:40px">\u00b7\u00b7\u2192\u00a0</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:40px">\u2192\u00a0\u00a0\u00a0</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:20px">\u00b7\u00b7</span>',
 				'<span class="mtk2">He</span>',
 				'<span class="mtk3">llo\u00a0world!</span>',
-				'<span class="vs-whitespace" style="width:20px">\u00b7\u2192</span>',
-				'<span class="vs-whitespace" style="width:40px">\u00b7\u00b7\u2192\u00a0</span>',
-				'<span class="vs-whitespace" style="width:40px">\u00b7\u00b7\u00b7\u2192</span>',
-				'<span class="vs-whitespace" style="width:40px">\u00b7\u00b7\u00b7\u00b7</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:20px">\u00b7\uffeb</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:40px">\u00b7\u00b7\u2192\u00a0</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:40px">\u00b7\u00b7\u00b7\uffeb</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:40px">\u00b7\u00b7\u00b7\u00b7</span>',
 				'</span>',
 			].join('')
 		);
@@ -899,16 +961,17 @@ suite('viewLineRenderer.renderLine 2', () => {
 			],
 			2,
 			'boundary',
+			null,
 			[
 				'<span>',
 				'<span class="">\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0</span>',
-				'<span class="vs-whitespace" style="width:20px">\u00b7\u00b7</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:20px">\u00b7\u00b7</span>',
 				'<span class="mtk2">He</span>',
 				'<span class="mtk3">llo\u00a0world!</span>',
-				'<span class="vs-whitespace" style="width:20px">\u00b7\u2192</span>',
-				'<span class="vs-whitespace" style="width:40px">\u00b7\u00b7\u2192\u00a0</span>',
-				'<span class="vs-whitespace" style="width:40px">\u00b7\u00b7\u00b7\u2192</span>',
-				'<span class="vs-whitespace" style="width:40px">\u00b7\u00b7\u00b7\u00b7</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:20px">\u00b7\uffeb</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:40px">\u00b7\u00b7\u2192\u00a0</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:40px">\u00b7\u00b7\u00b7\uffeb</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:40px">\u00b7\u00b7\u00b7\u00b7</span>',
 				'</span>',
 			].join('')
 		);
@@ -925,13 +988,14 @@ suite('viewLineRenderer.renderLine 2', () => {
 			],
 			2,
 			'boundary',
+			null,
 			[
 				'<span>',
 				'<span class="">\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0</span>',
 				'<span class="vs-whitespace">\u00b7\u00b7</span>',
 				'<span class="mtk2">He</span>',
 				'<span class="mtk3">llo\u00a0world!</span>',
-				'<span class="vs-whitespace">\u00b7\u2192\u00b7\u00b7\u2192\u00a0\u00b7\u00b7\u00b7\u2192\u00b7\u00b7\u00b7\u00b7</span>',
+				'<span class="vs-whitespace">\u00b7\uffeb\u00b7\u00b7\u2192\u00a0\u00b7\u00b7\u00b7\uffeb\u00b7\u00b7\u00b7\u00b7</span>',
 				'</span>',
 			].join('')
 		);
@@ -948,14 +1012,15 @@ suite('viewLineRenderer.renderLine 2', () => {
 			],
 			0,
 			'boundary',
+			null,
 			[
 				'<span>',
 				'<span class="mtk1">it</span>',
-				'<span class="vs-whitespace" style="width:20px">\u00b7\u00b7</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:20px">\u00b7\u00b7</span>',
 				'<span class="mtk1">it</span>',
 				'<span class="mtk2">\u00a0</span>',
 				'<span class="mtk3">it</span>',
-				'<span class="vs-whitespace" style="width:20px">\u00b7\u00b7</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:20px">\u00b7\u00b7</span>',
 				'<span class="mtk3">it</span>',
 				'</span>',
 			].join('')
@@ -973,14 +1038,156 @@ suite('viewLineRenderer.renderLine 2', () => {
 			],
 			0,
 			'all',
+			null,
 			[
 				'<span>',
-				'<span class="vs-whitespace" style="width:10px">\u00b7</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:10px">\u00b7</span>',
 				'<span class="mtk0">Hel</span>',
 				'<span class="mtk1">lo</span>',
-				'<span class="vs-whitespace" style="width:10px">\u00b7</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:10px">\u00b7</span>',
 				'<span class="mtk2">world!</span>',
-				'<span class="vs-whitespace" style="width:30px">\u2192\u00a0\u00a0</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:30px">\u2192\u00a0\u00a0</span>',
+				'</span>',
+			].join('')
+		);
+	});
+
+	test('createLineParts render whitespace for selection with no selections', () => {
+		testCreateLineParts(
+			false,
+			' Hello world!\t',
+			[
+				createPart(4, 0),
+				createPart(6, 1),
+				createPart(14, 2)
+			],
+			0,
+			'selection',
+			null,
+			[
+				'<span>',
+				'<span class="mtk0">\u00a0Hel</span>',
+				'<span class="mtk1">lo</span>',
+				'<span class="mtk2">\u00a0world!\u00a0\u00a0\u00a0</span>',
+				'</span>',
+			].join('')
+		);
+	});
+
+	test('createLineParts render whitespace for selection with whole line selection', () => {
+		testCreateLineParts(
+			false,
+			' Hello world!\t',
+			[
+				createPart(4, 0),
+				createPart(6, 1),
+				createPart(14, 2)
+			],
+			0,
+			'selection',
+			[new LineRange(0, 14)],
+			[
+				'<span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:10px">\u00b7</span>',
+				'<span class="mtk0">Hel</span>',
+				'<span class="mtk1">lo</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:10px">\u00b7</span>',
+				'<span class="mtk2">world!</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:30px">\u2192\u00a0\u00a0</span>',
+				'</span>',
+			].join('')
+		);
+	});
+
+	test('createLineParts render whitespace for selection with selection spanning part of whitespace', () => {
+		testCreateLineParts(
+			false,
+			' Hello world!\t',
+			[
+				createPart(4, 0),
+				createPart(6, 1),
+				createPart(14, 2)
+			],
+			0,
+			'selection',
+			[new LineRange(0, 5)],
+			[
+				'<span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:10px">\u00b7</span>',
+				'<span class="mtk0">Hel</span>',
+				'<span class="mtk1">lo</span>',
+				'<span class="mtk2">\u00a0world!\u00a0\u00a0\u00a0</span>',
+				'</span>',
+			].join('')
+		);
+	});
+
+
+	test('createLineParts render whitespace for selection with multiple selections', () => {
+		testCreateLineParts(
+			false,
+			' Hello world!\t',
+			[
+				createPart(4, 0),
+				createPart(6, 1),
+				createPart(14, 2)
+			],
+			0,
+			'selection',
+			[new LineRange(0, 5), new LineRange(9, 14)],
+			[
+				'<span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:10px">\u00b7</span>',
+				'<span class="mtk0">Hel</span>',
+				'<span class="mtk1">lo</span>',
+				'<span class="mtk2">\u00a0world!</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:30px">\u2192\u00a0\u00a0</span>',
+				'</span>',
+			].join('')
+		);
+	});
+
+
+	test('createLineParts render whitespace for selection with multiple, initially unsorted selections', () => {
+		testCreateLineParts(
+			false,
+			' Hello world!\t',
+			[
+				createPart(4, 0),
+				createPart(6, 1),
+				createPart(14, 2)
+			],
+			0,
+			'selection',
+			[new LineRange(9, 14), new LineRange(0, 5)],
+			[
+				'<span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:10px">\u00b7</span>',
+				'<span class="mtk0">Hel</span>',
+				'<span class="mtk1">lo</span>',
+				'<span class="mtk2">\u00a0world!</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:30px">\u2192\u00a0\u00a0</span>',
+				'</span>',
+			].join('')
+		);
+	});
+
+	test('createLineParts render whitespace for selection with selections next to each other', () => {
+		testCreateLineParts(
+			false,
+			' * S',
+			[
+				createPart(4, 0)
+			],
+			0,
+			'selection',
+			[new LineRange(0, 1), new LineRange(1, 2), new LineRange(2, 3)],
+			[
+				'<span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:10px">\u00b7</span>',
+				'<span class="mtk0">*</span>',
+				'<span class="vs-whitespace" style="display:inline-block;width:10px">\u00b7</span>',
+				'<span class="mtk0">S</span>',
 				'</span>',
 			].join('')
 		);
@@ -989,7 +1196,10 @@ suite('viewLineRenderer.renderLine 2', () => {
 	test('createLineParts can handle unsorted inline decorations', () => {
 		let actual = renderViewLine(new RenderLineInput(
 			false,
+			true,
 			'Hello world',
+			false,
+			true,
 			false,
 			0,
 			createViewLineTokens([createPart(11, 0)]),
@@ -1003,7 +1213,8 @@ suite('viewLineRenderer.renderLine 2', () => {
 			-1,
 			'none',
 			false,
-			false
+			false,
+			null
 		));
 
 		// 01234567890
@@ -1030,7 +1241,10 @@ suite('viewLineRenderer.renderLine 2', () => {
 
 		let actual = renderViewLine(new RenderLineInput(
 			false,
+			true,
 			lineContent,
+			false,
+			true,
 			false,
 			0,
 			createViewLineTokens([createPart(4, 3)]),
@@ -1040,7 +1254,8 @@ suite('viewLineRenderer.renderLine 2', () => {
 			-1,
 			'all',
 			false,
-			true
+			true,
+			null
 		));
 
 		let expected = [
@@ -1059,7 +1274,10 @@ suite('viewLineRenderer.renderLine 2', () => {
 
 		let actual = renderViewLine(new RenderLineInput(
 			false,
+			true,
 			lineContent,
+			false,
+			true,
 			false,
 			0,
 			createViewLineTokens([createPart(4, 3)]),
@@ -1069,12 +1287,13 @@ suite('viewLineRenderer.renderLine 2', () => {
 			-1,
 			'all',
 			false,
-			true
+			true,
+			null
 		));
 
 		let expected = [
 			'<span>',
-			'<span class="vs-whitespace" style="width:40px">\u2192\u00a0\u00a0\u00a0</span>',
+			'<span class="vs-whitespace" style="display:inline-block;width:40px">\u2192\u00a0\u00a0\u00a0</span>',
 			'<span class="mtk3 before">b</span>',
 			'<span class="mtk3">la</span>',
 			'</span>'
@@ -1089,7 +1308,10 @@ suite('viewLineRenderer.renderLine 2', () => {
 
 		let actual = renderViewLine(new RenderLineInput(
 			false,
+			true,
 			lineContent,
+			false,
+			true,
 			false,
 			0,
 			createViewLineTokens([createPart(0, 3)]),
@@ -1099,7 +1321,8 @@ suite('viewLineRenderer.renderLine 2', () => {
 			-1,
 			'all',
 			false,
-			true
+			true,
+			null
 		));
 
 		let expected = [
@@ -1115,7 +1338,10 @@ suite('viewLineRenderer.renderLine 2', () => {
 
 		let actual = renderViewLine(new RenderLineInput(
 			true,
+			true,
 			'  1. 🙏',
+			false,
+			false,
 			false,
 			0,
 			createViewLineTokens([createPart(7, 3)]),
@@ -1125,7 +1351,8 @@ suite('viewLineRenderer.renderLine 2', () => {
 			10000,
 			'none',
 			false,
-			false
+			false,
+			null
 		));
 
 		let expected = [
@@ -1142,7 +1369,10 @@ suite('viewLineRenderer.renderLine 2', () => {
 
 		let actual = renderViewLine(new RenderLineInput(
 			true,
+			true,
 			'',
+			false,
+			true,
 			false,
 			0,
 			createViewLineTokens([createPart(0, 3)]),
@@ -1155,7 +1385,8 @@ suite('viewLineRenderer.renderLine 2', () => {
 			10000,
 			'none',
 			false,
-			false
+			false,
+			null
 		));
 
 		let expected = [
@@ -1171,7 +1402,10 @@ suite('viewLineRenderer.renderLine 2', () => {
 
 		let actual = renderViewLine(new RenderLineInput(
 			true,
+			true,
 			'\t}',
+			false,
+			true,
 			false,
 			0,
 			createViewLineTokens([createPart(2, 3)]),
@@ -1184,7 +1418,8 @@ suite('viewLineRenderer.renderLine 2', () => {
 			10000,
 			'none',
 			false,
-			false
+			false,
+			null
 		));
 
 		let expected = [
@@ -1197,10 +1432,264 @@ suite('viewLineRenderer.renderLine 2', () => {
 		assert.deepEqual(actual.html, expected);
 	});
 
+	test('issue #22832: Consider fullwidth characters when rendering tabs', () => {
+
+		let actual = renderViewLine(new RenderLineInput(
+			true,
+			true,
+			'asd = "擦"\t\t#asd',
+			false,
+			false,
+			false,
+			0,
+			createViewLineTokens([createPart(15, 3)]),
+			[],
+			4,
+			10,
+			10000,
+			'none',
+			false,
+			false,
+			null
+		));
+
+		let expected = [
+			'<span>',
+			'<span class="mtk3">asd\u00a0=\u00a0"擦"\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0#asd</span>',
+			'</span>'
+		].join('');
+
+		assert.deepEqual(actual.html, expected);
+	});
+
+	test('issue #22832: Consider fullwidth characters when rendering tabs (render whitespace)', () => {
+
+		let actual = renderViewLine(new RenderLineInput(
+			true,
+			true,
+			'asd = "擦"\t\t#asd',
+			false,
+			false,
+			false,
+			0,
+			createViewLineTokens([createPart(15, 3)]),
+			[],
+			4,
+			10,
+			10000,
+			'all',
+			false,
+			false,
+			null
+		));
+
+		let expected = [
+			'<span>',
+			'<span class="mtk3">asd</span>',
+			'<span class="vs-whitespace">\u00b7</span>',
+			'<span class="mtk3">=</span>',
+			'<span class="vs-whitespace">\u00b7</span>',
+			'<span class="mtk3">"擦"</span>',
+			'<span class="vs-whitespace">\u2192\u00a0\u2192\u00a0\u00a0\u00a0</span>',
+			'<span class="mtk3">#asd</span>',
+			'</span>'
+		].join('');
+
+		assert.deepEqual(actual.html, expected);
+	});
+
+	test('issue #22352: COMBINING ACUTE ACCENT (U+0301)', () => {
+
+		let actual = renderViewLine(new RenderLineInput(
+			true,
+			true,
+			'12345689012345678901234568901234567890123456890abába',
+			false,
+			false,
+			false,
+			0,
+			createViewLineTokens([createPart(53, 3)]),
+			[],
+			4,
+			10,
+			10000,
+			'none',
+			false,
+			false,
+			null
+		));
+
+		let expected = [
+			'<span>',
+			'<span class="mtk3">12345689012345678901234568901234567890123456890abába</span>',
+			'</span>'
+		].join('');
+
+		assert.deepEqual(actual.html, expected);
+	});
+
+	test('issue #22352: Partially Broken Complex Script Rendering of Tamil', () => {
+
+		let actual = renderViewLine(new RenderLineInput(
+			true,
+			true,
+			' JoyShareல் பின்தொடர்ந்து, விடீயோ, ஜோக்குகள், அனிமேசன், நகைச்சுவை படங்கள் மற்றும் செய்திகளை பெறுவீர்',
+			false,
+			false,
+			false,
+			0,
+			createViewLineTokens([createPart(100, 3)]),
+			[],
+			4,
+			10,
+			10000,
+			'none',
+			false,
+			false,
+			null
+		));
+
+		let expected = [
+			'<span>',
+			'<span class="mtk3">\u00a0JoyShareல்\u00a0பின்தொடர்ந்து,\u00a0விடீயோ,\u00a0ஜோக்குகள்,\u00a0</span>',
+			'<span class="mtk3">அனிமேசன்,\u00a0நகைச்சுவை\u00a0படங்கள்\u00a0மற்றும்\u00a0செய்திகளை\u00a0</span>',
+			'<span class="mtk3">பெறுவீர்</span>',
+			'</span>'
+		].join('');
+
+		assert.deepEqual(actual.html, expected);
+	});
+
+	test('issue #42700: Hindi characters are not being rendered properly', () => {
+
+		let actual = renderViewLine(new RenderLineInput(
+			true,
+			true,
+			' वो ऐसा क्या है जो हमारे अंदर भी है और बाहर भी है। जिसकी वजह से हम सब हैं। जिसने इस सृष्टि की रचना की है।',
+			false,
+			false,
+			false,
+			0,
+			createViewLineTokens([createPart(105, 3)]),
+			[],
+			4,
+			10,
+			10000,
+			'none',
+			false,
+			false,
+			null
+		));
+
+		let expected = [
+			'<span>',
+			'<span class="mtk3">\u00a0वो\u00a0ऐसा\u00a0क्या\u00a0है\u00a0जो\u00a0हमारे\u00a0अंदर\u00a0भी\u00a0है\u00a0और\u00a0बाहर\u00a0भी\u00a0है।\u00a0</span>',
+			'<span class="mtk3">जिसकी\u00a0वजह\u00a0से\u00a0हम\u00a0सब\u00a0हैं।\u00a0जिसने\u00a0इस\u00a0सृष्टि\u00a0की\u00a0रचना\u00a0की\u00a0</span>',
+			'<span class="mtk3">है।</span>',
+			'</span>'
+		].join('');
+
+		assert.deepEqual(actual.html, expected);
+	});
+
+	test('issue #38123: editor.renderWhitespace: "boundary" renders whitespace at line wrap point when line is wrapped', () => {
+		let actual = renderViewLine(new RenderLineInput(
+			true,
+			true,
+			'This is a long line which never uses more than two spaces. ',
+			true,
+			true,
+			false,
+			0,
+			createViewLineTokens([createPart(59, 3)]),
+			[],
+			4,
+			10,
+			10000,
+			'boundary',
+			false,
+			false,
+			null
+		));
+
+		let expected = [
+			'<span>',
+			'<span class="mtk3">This\u00a0is\u00a0a\u00a0long\u00a0line\u00a0which\u00a0never\u00a0uses\u00a0more\u00a0than\u00a0two</span><span class="mtk3">\u00a0spaces.</span><span class="mtk3">\u00a0</span>',
+			'</span>'
+		].join('');
+
+		assert.deepEqual(actual.html, expected);
+	});
+
+	test('issue #33525: Long line with ligatures takes a long time to paint decorations', () => {
+		let actual = renderViewLine(new RenderLineInput(
+			false,
+			false,
+			'append data to append data to append data to append data to append data to append data to append data to append data to append data to append data to append data to append data to append data to',
+			false,
+			true,
+			false,
+			0,
+			createViewLineTokens([createPart(194, 3)]),
+			[],
+			4,
+			10,
+			10000,
+			'none',
+			false,
+			true,
+			null
+		));
+
+		let expected = [
+			'<span>',
+			'<span class="mtk3">append\u00a0data\u00a0to\u00a0append\u00a0data\u00a0to\u00a0append\u00a0data\u00a0to\u00a0</span>',
+			'<span class="mtk3">append\u00a0data\u00a0to\u00a0append\u00a0data\u00a0to\u00a0append\u00a0data\u00a0to\u00a0</span>',
+			'<span class="mtk3">append\u00a0data\u00a0to\u00a0append\u00a0data\u00a0to\u00a0append\u00a0data\u00a0to\u00a0</span>',
+			'<span class="mtk3">append\u00a0data\u00a0to\u00a0append\u00a0data\u00a0to\u00a0append\u00a0data\u00a0to\u00a0</span>',
+			'<span class="mtk3">append\u00a0data\u00a0to</span>',
+			'</span>'
+		].join('');
+
+		assert.deepEqual(actual.html, expected);
+	});
+
+	test('issue #33525: Long line with ligatures takes a long time to paint decorations - not possible', () => {
+		let actual = renderViewLine(new RenderLineInput(
+			false,
+			false,
+			'appenddatatoappenddatatoappenddatatoappenddatatoappenddatatoappenddatatoappenddatatoappenddatatoappenddatatoappenddatatoappenddatatoappenddatatoappenddatato',
+			false,
+			true,
+			false,
+			0,
+			createViewLineTokens([createPart(194, 3)]),
+			[],
+			4,
+			10,
+			10000,
+			'none',
+			false,
+			true,
+			null
+		));
+
+		let expected = [
+			'<span>',
+			'<span class="mtk3">appenddatatoappenddatatoappenddatatoappenddatatoappenddatatoappenddatatoappenddatatoappenddatatoappenddatatoappenddatatoappenddatatoappenddatatoappenddatato</span>',
+			'</span>'
+		].join('');
+
+		assert.deepEqual(actual.html, expected);
+	});
+
 	function createTestGetColumnOfLinePartOffset(lineContent: string, tabSize: number, parts: ViewLineToken[], expectedPartLengths: number[]): (partIndex: number, partLength: number, offset: number, expected: number) => void {
 		let renderLineOutput = renderViewLine(new RenderLineInput(
 			false,
+			true,
 			lineContent,
+			false,
+			true,
 			false,
 			0,
 			createViewLineTokens(parts),
@@ -1210,7 +1699,8 @@ suite('viewLineRenderer.renderLine 2', () => {
 			-1,
 			'none',
 			false,
-			false
+			false,
+			null
 		));
 
 		return (partIndex: number, partLength: number, offset: number, expected: number) => {

@@ -1,7 +1,10 @@
 {
 	"name": "log",
-	"version": "0.1.0",
+	"displayName": "%displayName%",
+	"description": "%description%",
+	"version": "1.0.0",
 	"publisher": "vscode",
+	"license": "MIT",
 	"engines": {
 		"vscode": "*"
 	},
@@ -17,16 +20,11 @@
 					"*.log.?"
 				],
 				"aliases": [
-					"log"
+					"Log"
 				]
 			}
 		],
 		"grammars": [
-			{
-				"language": "Log",
-				"scopeName": "text.log",
-				"path": "./syntaxes/log.tmLanguage.json"
-			},
 			{
 				"language": "log",
 				"scopeName": "text.log",

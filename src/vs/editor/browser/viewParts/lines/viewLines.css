@@ -14,22 +14,12 @@
 	100% { background-color: none }
 }*/
 
-.monaco-editor .lines-content,
-.monaco-editor .view-line,
-.monaco-editor .view-lines {
-	-webkit-user-select: text;
-	-ms-user-select: text;
-	-khtml-user-select: text;
-	-moz-user-select: text;
-	-o-user-select: text;
-	user-select: text;
-}
-
-.monaco-editor.ie .lines-content,
-.monaco-editor.ie .view-line,
-.monaco-editor.ie .view-lines {
-	-ms-user-select: none;
+.monaco-editor.no-user-select .lines-content,
+.monaco-editor.no-user-select .view-line,
+.monaco-editor.no-user-select .view-lines {
 	user-select: none;
+	-webkit-user-select: none;
+	-ms-user-select: none;
 }
 
 .monaco-editor .view-lines {

@@ -3,70 +3,79 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-'use strict';
-
-import { illegalArgument, onUnexpectedExternalError } from 'vs/base/common/errors';
-import URI from 'vs/base/common/uri';
-import { TPromise } from 'vs/base/common/winjs.base';
+import { URI } from 'vs/base/common/uri';
 import { Range } from 'vs/editor/common/core/range';
 import { ITextModel } from 'vs/editor/common/model';
-import { registerLanguageCommand } from 'vs/editor/browser/editorExtensions';
-import { SymbolInformation, DocumentSymbolProviderRegistry, IOutline } from 'vs/editor/common/modes';
+import { DocumentSymbol } from 'vs/editor/common/modes';
 import { IModelService } from 'vs/editor/common/services/modelService';
-import { asWinJsPromise } from 'vs/base/common/async';
+import { CancellationToken } from 'vs/base/common/cancellation';
+import { ITextModelService } from 'vs/editor/common/services/resolverService';
+import { OutlineModel, OutlineElement } from 'vs/editor/contrib/documentSymbols/outlineModel';
+import { values } from 'vs/base/common/collections';
+import { CommandsRegistry } from 'vs/platform/commands/common/commands';
+import { assertType } from 'vs/base/common/types';
 
-export function getDocumentSymbols(model: ITextModel): TPromise<IOutline> {
+export async function getDocumentSymbols(document: ITextModel, flat: boolean, token: CancellationToken): Promise<DocumentSymbol[]> {
 
-	let entries: SymbolInformation[] = [];
+	const model = await OutlineModel.create(document, token);
+	const roots: DocumentSymbol[] = [];
+	for (const child of values(model.children)) {
+		if (child instanceof OutlineElement) {
+			roots.push(child.symbol);
+		} else {
+			roots.push(...values(child.children).map(child => child.symbol));
+		}
+	}
 
-	let promises = DocumentSymbolProviderRegistry.all(model).map(support => {
+	let flatEntries: DocumentSymbol[] = [];
+	if (token.isCancellationRequested) {
+		return flatEntries;
+	}
+	if (flat) {
+		flatten(flatEntries, roots, '');
+	} else {
+		flatEntries = roots;
+	}
 
-		return asWinJsPromise((token) => {
-			return support.provideDocumentSymbols(model, token);
-		}).then(result => {
-			if (Array.isArray(result)) {
-				entries.push(...result);
-			}
-		}, err => {
-			onUnexpectedExternalError(err);
-		});
-	});
-
-	return TPromise.join(promises).then(() => {
-		let flatEntries: SymbolInformation[] = [];
-		flatten(flatEntries, entries, '');
-		flatEntries.sort(compareEntriesUsingStart);
-
-		return {
-			entries: flatEntries,
-		};
-	});
+	return flatEntries.sort(compareEntriesUsingStart);
 }
 
-function compareEntriesUsingStart(a: SymbolInformation, b: SymbolInformation): number {
-	return Range.compareRangesUsingStarts(Range.lift(a.location.range), Range.lift(b.location.range));
+function compareEntriesUsingStart(a: DocumentSymbol, b: DocumentSymbol): number {
+	return Range.compareRangesUsingStarts(a.range, b.range);
 }
 
-function flatten(bucket: SymbolInformation[], entries: SymbolInformation[], overrideContainerLabel: string): void {
+function flatten(bucket: DocumentSymbol[], entries: DocumentSymbol[], overrideContainerLabel: string): void {
 	for (let entry of entries) {
 		bucket.push({
 			kind: entry.kind,
-			location: entry.location,
+			tags: entry.tags,
 			name: entry.name,
-			containerName: entry.containerName || overrideContainerLabel
+			detail: entry.detail,
+			containerName: entry.containerName || overrideContainerLabel,
+			range: entry.range,
+			selectionRange: entry.selectionRange,
+			children: undefined, // we flatten it...
 		});
+		if (entry.children) {
+			flatten(bucket, entry.children, entry.name);
+		}
 	}
 }
 
 
-registerLanguageCommand('_executeDocumentSymbolProvider', function (accessor, args) {
-	const { resource } = args;
-	if (!(resource instanceof URI)) {
-		throw illegalArgument('resource');
-	}
+CommandsRegistry.registerCommand('_executeDocumentSymbolProvider', async function (accessor, ...args) {
+	const [resource] = args;
+	assertType(URI.isUri(resource));
+
 	const model = accessor.get(IModelService).getModel(resource);
-	if (!model) {
-		throw illegalArgument('resource');
+	if (model) {
+		return getDocumentSymbols(model, false, CancellationToken.None);
 	}
-	return getDocumentSymbols(model);
+
+	const reference = await accessor.get(ITextModelService).createModelReference(resource);
+	try {
+		return await getDocumentSymbols(reference.object.textEditorModel, false, CancellationToken.None);
+	} finally {
+		reference.dispose();
+	}
 });
